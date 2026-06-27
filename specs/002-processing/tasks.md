@@ -6,7 +6,7 @@ Implements: spec.md + design.md (002-processing)
 Each task is small and individually verifiable. Maker top-to-bottom; verifier
 grades each Check before the next.
 
-- [ ] T1 — Add `ProcessingStack`: DynamoDB table `geo-fences` (PK `id`, DynamoDB
+- [x] T1 — Add `ProcessingStack`: DynamoDB table `geo-fences` (PK `id`, DynamoDB
   Streams ON, new+old images) and the on-demand Kinesis `geofence-alerts` stream;
   export both for increment 3. Check: synth shows the table with
   `StreamSpecification` and `geofence-alerts` as `ON_DEMAND`.
