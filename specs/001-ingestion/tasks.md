@@ -21,7 +21,7 @@ bottom; the verifier grades each against its check before the next begins.
   one `AWS::IoT::TopicRule` whose Kinesis action references `vehicle-telemetry`
   and partition key `${vehicleId}`.
 
-- [ ] T4 — Construct tests (`aws-cdk-lib/assertions`): stream is on-demand;
+- [x] T4 — Construct tests (`aws-cdk-lib/assertions`): stream is on-demand;
   exactly one topic rule with partition key `${vehicleId}` targeting the stream;
   rule role policy scoped to the stream ARN. Check: `npm test` green.
 
