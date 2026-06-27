@@ -1,0 +1,98 @@
+# Tasks 003 — Agentic Alert Triage & Delivery
+
+Status: DRAFT (awaiting human approval)
+Implements: spec.md + design.md (003-agentic-alerting)
+
+Each task is small and individually verifiable. Maker top-to-bottom; verifier
+grades each Check before the next.
+
+- [ ] T1 — Add `AlertingStack` skeleton: SQS `alert-queue`, SNS
+  `geofence-alerts-topic` + an email subscription (address as a context param),
+  exports. Check: synth shows the queue, topic, and subscription.
+
+- [ ] T2 — AgentCore Memory via `CfnMemory`: semantic + summary strategies,
+  per-vehicle namespaces, `EventExpiryDuration` (param, default 90d), execution
+  role with memory actions. Check: synth shows `AWS::BedrockAgentCore::Memory` with
+  both strategies and the scoped role.
+
+- [ ] T3 — Alert Analyzer agent (Python/Strands): system-prompt rubric (act/suppress
+  + severity), Memory retrieve+write, structured output, and the suppression gate
+  (only HIGH/CRITICAL -> SQS). Containerize. Check: unit tests — gate passes only
+  high/critical; structured-output schema validates; `BEDROCK_MODEL_ID` honored.
+
+- [ ] T4 — Declare the Analyzer `CfnRuntime`: `DockerImageAsset` -> ECR, role
+  (`InvokeModel`, memory actions, `SQS:SendMessage`), env (`BEDROCK_MODEL_ID`,
+  memory id, queue url, `OTEL_TRACES_SAMPLER`). Check: synth shows
+  `AWS::BedrockAgentCore::Runtime` with the image + role + env.
+
+- [ ] T5 — Analyzer bridge (Python Lambda): Kinesis ESM on `geofence-alerts`
+  (batch 10 / 5s) -> `InvokeAgentRuntime`. Check: synth shows the ESM; unit test
+  adapts a breach record to the invoke payload.
+
+- [ ] T6 — Alert Publisher agent (Python/Strands, memory disabled): four-section
+  formatter (status/why/impact/actions) + severity-tagged subject + dedupe key ->
+  `SNS:Publish`. Containerize + `CfnRuntime` + role (`InvokeModel`, `SNS:Publish`).
+  Check: unit test asserts the four sections, subject format, dedupe key; synth
+  shows the second runtime.
+
+- [ ] T7 — Publisher bridge (Python Lambda): SQS ESM on `alert-queue` ->
+  `InvokeAgentRuntime`. Check: synth shows the ESM; unit test adapts an SQS message
+  to the invoke payload.
+
+- [ ] T8 — Eval harness (the H1 proof): replay the labeled breach set (001
+  scenarios via 002 or fixtures, label joined by vehicleId+time, hidden from the
+  agent) through the analyzer; report false-positive suppression, genuine
+  high/critical retention, precision/recall, delta vs a tuned static-rule baseline
+  (OQ-2), and cost per triaged event. Check: harness runs and prints the metrics
+  table; baseline implemented.
+
+- [ ] T9 — Construct tests (CDK assertions): both `CfnRuntime`, `CfnMemory`, both
+  ESMs, SQS, SNS+subscription, least-privilege IAM. Check: `npm test` green.
+
+- [ ] T10 — Author `specs/003-agentic-alerting/verify.md` (live runbook): the H1
+  eval run (AC1); a high/critical event delivered with four-part content (AC4); a
+  medium/low event NOT delivered (AC3); the memory effect on a repeat event (AC2);
+  end-to-end single delivery via trace (AC5). Exact commands + expected numbers.
+  Check: runbook runnable.
+
+- [ ] T11 — Run verify.md end to end against a dev deploy (maker agent if creds +
+  Docker present; else human). Check: filled result block in the handoff — H1
+  suppression/retention + baseline delta (AC1), gate (AC3), four-part delivery
+  (AC4), memory effect (AC2), single delivery (AC5) — all met or numbers reported
+  against OQ-1 thresholds.
+
+- [ ] T12 — Record deferred follow-ups (on-call routing, dedup hardening,
+  threshold tuning from OQ-1) as STATE.md queue proposals. Check: captured.
+
+## Traceability (task -> what it satisfies)
+
+- T1 queue/topic -> FR3/FR4, AC6 ; T2 memory -> FR2, AC2 ;
+  T3 analyzer+gate -> FR1, FR3, AC1, AC3 ; T4 analyzer runtime -> FR6, AC6 ;
+  T5 analyzer bridge -> FR1 ; T6 publisher -> FR4, AC4 ; T7 publisher bridge -> FR4 ;
+  T8 eval harness -> FR1, AC1 (H1) ; T9 construct tests -> AC6 ;
+  T10 runbook -> AC1..AC5 (made concrete) ; T11 live run -> AC1,AC2,AC3,AC4,AC5 ;
+  T12 -> scope discipline.
+- Every AC maps to >= 1 task; every task to >= 1 FR/AC.
+
+## Verification tiers (how "done" is proven)
+
+- **Tier 1 — local, free** (maker runs; verifier RE-RUNS): `npm run build`,
+  `npm test` (CDK assertions), `pytest` (gate, bridges, formatter), the eval
+  harness on fixtures, `npx cdk synth`. Proves logic + template, not live agents.
+- **GATE — deploy (in-session, human-authorized):** maker agent `cdk deploy` to a
+  dev account (AgentCore runtimes + memory + Lambdas + SQS/SNS; needs Docker for the
+  image build, Bedrock model access, and confirmed region), runs verify.md,
+  `cdk destroy` after. Production/unattended deploys barred.
+- **Tier 2 — live, measured, agent-run:** the **H1 numbers** (AC1, the lead bet),
+  gate (AC3), four-part delivery (AC4), memory effect (AC2), single delivery (AC5).
+
+The verifier RE-RUNS Tier 1 (incl. the eval on fixtures) and the Tier-2 read-side
+checks; done requires the measured numbers in the handoff.
+
+## Definition of done (increment)
+
+- Tier 1 green (build + CDK tests + pytest + eval-on-fixtures + synth), re-run by verifier.
+- Dev deploy succeeds; both runtimes reach READY; AC6 confirmed (clean deploy + destroy).
+- Tier 2 numbers reported: H1 suppression/retention + baseline delta (AC1), AC2–AC5 met.
+- No durable artifact references external/private source material.
+- Branch handed to the human for verification and merge; nothing auto-merged.

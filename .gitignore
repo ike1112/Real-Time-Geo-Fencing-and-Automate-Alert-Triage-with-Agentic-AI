@@ -1,0 +1,15 @@
+# CDK / Node
+*.js
+!jest.config.js
+*.d.ts
+node_modules/
+cdk.out/
+.cdk.staging/
+
+# Loop worktrees (isolated per-task checkouts)
+.worktrees/
+
+# Private source context — kept locally as background for the architect stage,
+# never published. The committed product artifacts stand on their own.
+docs/*.pdf
+docs/*.png

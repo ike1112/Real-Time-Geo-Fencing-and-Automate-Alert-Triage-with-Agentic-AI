@@ -1,0 +1,67 @@
+name: Loop Triage
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekdays at 09:00 UTC
+    - cron: '0 9 * * 1-5'
+
+permissions:
+  contents: write
+
+# One triage run at a time; a second trigger waits instead of racing the
+# first run's push to master.
+concurrency:
+  group: loop-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run report-only loop triage
+        shell: pwsh
+        run: ./scripts/loop-triage.ps1 -UpdateState
+
+      - name: Upload triage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-triage-${{ github.run_number }}
+          path: |
+            .loop/triage/
+            STATE.md
+
+      - name: Show latest report in workflow summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_report=$(ls -1t .loop/triage/triage-*.md | head -n 1)
+          {
+            echo "## Loop Triage Latest Report"
+            echo
+            cat "$latest_report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit loop state update
+        shell: bash
+        run: |
+          set -euo pipefail
+          # git status (not git diff) so new untracked reports are detected.
+          if [ -z "$(git status --porcelain -- STATE.md .loop)" ]; then
+            echo "No loop state changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The attempt ledger and run log must be committed or the
+          # 3-consecutive-run recurrence escalation can never fire in CI.
+          git add STATE.md .loop/triage .loop/attempt-ledger.json .loop/run-log.jsonl
+          git commit -m "chore: update loop triage state"
+          # Replay on top of anything pushed since checkout instead of failing.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push

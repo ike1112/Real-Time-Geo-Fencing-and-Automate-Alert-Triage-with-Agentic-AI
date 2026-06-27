@@ -1,0 +1,30 @@
+{
+  "name": "geofence-alert-triage",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "synth": "cdk synth",
+    "test": "jest --passWithNoTests",
+    "loop:triage": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-triage.ps1 -UpdateState",
+    "loop:triage:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-triage.ps1",
+    "loop:triage:checks": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-triage.ps1 -RunChecks -UpdateState",
+    "loop:task:reject": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-task.ps1 -Action reject",
+    "loop:worktree:new": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-worktree.ps1 -Action create",
+    "loop:worktree:list": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-worktree.ps1 -Action list",
+    "loop:worktree:remove": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-worktree.ps1 -Action remove"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.258.0",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.0",
+    "aws-cdk": "^2.258.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.3"
+  }
+}
