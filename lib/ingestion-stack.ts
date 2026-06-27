@@ -2,13 +2,13 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as kinesis from 'aws-cdk-lib/aws-kinesis';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as iot from 'aws-cdk-lib/aws-iot';
 
 /**
  * Telemetry ingestion.
  *
- * Currently provisions the durable Kinesis stream that vehicle telemetry lands
- * on. The IoT rule role and the IoT topic rule that publishes into it land in
- * follow-on changes.
+ * An IoT topic rule routes vehicle messages onto a durable Kinesis stream,
+ * partitioned per vehicle, using a least-privilege role scoped to that stream.
  */
 export class IngestionStack extends cdk.Stack {
   /** The per-vehicle-ordered telemetry log later increments read from. */
@@ -36,6 +36,27 @@ export class IngestionStack extends cdk.Stack {
       description: 'Lets the telemetry topic rule write to the telemetry stream',
     });
     this.telemetryStream.grantWrite(this.ruleRole);
+
+    // Route every vehicle message published to the iot_data topic onto the
+    // stream, keyed by ${vehicleId} so each vehicle's records stay ordered on
+    // one shard.
+    new iot.CfnTopicRule(this, 'TelemetryToKinesis', {
+      ruleName: 'VehicleTelemetryToKinesis',
+      topicRulePayload: {
+        sql: "SELECT * FROM 'iot_data'",
+        awsIotSqlVersion: '2016-03-23',
+        ruleDisabled: false,
+        actions: [
+          {
+            kinesis: {
+              streamName: this.telemetryStream.streamName,
+              partitionKey: '${vehicleId}',
+              roleArn: this.ruleRole.roleArn,
+            },
+          },
+        ],
+      },
+    });
 
     new cdk.CfnOutput(this, 'TelemetryStreamName', {
       value: this.telemetryStream.streamName,
