@@ -25,7 +25,7 @@ bottom; the verifier grades each against its check before the next begins.
   exactly one topic rule with partition key `${vehicleId}` targeting the stream;
   rule role policy scoped to the stream ARN. Check: `npm test` green.
 
-- [ ] T5 — Build the telemetry simulator under `tools/simulator/`: publishes via
+- [x] T5 — Build the telemetry simulator under `tools/simulator/`: publishes via
   `@aws-sdk/client-iot-data-plane` `PublishCommand` to topic `iot_data` with local
   IAM credentials, driving N vehicles along scripted Calgary route files, emitting
   the full design.md payload (required contract + full VSS/telemetry/device/route
