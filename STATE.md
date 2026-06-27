@@ -26,10 +26,10 @@ approving a spec produced by the architect stage.
   rejections: 0 (verifier rejections so far; 2 = stop and escalate)
 -->
 
-- [ ] Implement increment 001 — telemetry ingestion
+- [x] Implement increment 001 — telemetry ingestion
   spec: specs/001-ingestion
   approved: 2026-06-26
-  status: in-progress (T1 checker-approved after 1 reject — forbidden-label comments fixed; T2 next)
+  status: done — T1-T8 complete, each checker-approved; AC1/AC3/AC5 verified (T6 live: 90 records, max 0.97s, 0 out-of-order); AC2 soak + AC4 removalPolicy deferred (see Watch List)
   rejections: 1
 
 ## High Priority
@@ -44,6 +44,18 @@ approving a spec produced by the architect stage.
 ## Watch List
 
 <!-- Items to monitor but not act on yet -->
+
+Deferred follow-ups (proposals, not yet approved into the queue):
+- IoT topic rule has no error/dead-letter action — a malformed message is dropped
+  silently. Add a republish error action before increment 3.
+- Kinesis stream defaults to DeletionPolicy=Retain, so `cdk destroy` leaves it
+  (orphaned cost; clean teardown / AC4 not fully met). Set removalPolicy=DESTROY
+  for dev so teardown is clean.
+- AC2 (5-minute soak: exactly-once / no-drop) was not run during 001 live
+  verification — run it before calling 001 fully closed.
+- AWS Well-Architected review (docs/well-architected-review.md) recorded further
+  hardening for 002/003 (Lambda DLQs, Flink checkpointing, blended model posture,
+  Bedrock retry/backoff) — apply each when its increment builds.
 
 ## Recent Noise
 

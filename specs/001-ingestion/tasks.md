@@ -49,13 +49,13 @@ bottom; the verifier grades each against its check before the next begins.
   its shell); the verifier re-runs the read-side steps; the human authorizes the
   deploy/spend and reviews the numbers.
 
-- [ ] T7 — Document running the ingestion slice in a `specs/001-ingestion/`
+- [x] T7 — Document running the ingestion slice in a `specs/001-ingestion/`
   README note or repo doc: deploy, the minimal IAM policy the simulator needs
   (`iot-data:Publish` on `iot_data`), how to run it, how to observe records. No
   reference to external source material. Check (HUMAN): a reader can run the slice
   from the doc alone.
 
-- [ ] T8 — Record the deferred follow-up (rule error/dead-letter action) as a
+- [x] T8 — Record the deferred follow-up (rule error/dead-letter action) as a
   proposal in STATE.md's queue, not implemented here. Check: follow-up captured,
   scope of this increment stayed minimal.
 
