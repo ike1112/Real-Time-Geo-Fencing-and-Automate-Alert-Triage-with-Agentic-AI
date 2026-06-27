@@ -11,7 +11,7 @@ bottom; the verifier grades each against its check before the next begins.
   later increments. Check: `cdk synth` shows one `AWS::Kinesis::Stream` named
   `vehicle-telemetry` with `StreamModeDetails: ON_DEMAND`.
 
-- [ ] T2 — Add the IAM role assumed by `iot.amazonaws.com`, granted
+- [x] T2 — Add the IAM role assumed by `iot.amazonaws.com`, granted
   `kinesis:PutRecord`/`PutRecords` scoped to the `vehicle-telemetry` ARN only.
   Check: synth shows the role with the IoT trust principal and a stream-scoped
   policy; no wildcards on the resource.
