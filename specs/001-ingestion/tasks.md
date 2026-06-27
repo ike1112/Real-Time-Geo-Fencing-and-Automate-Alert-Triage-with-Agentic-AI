@@ -16,7 +16,7 @@ bottom; the verifier grades each against its check before the next begins.
   Check: synth shows the role with the IoT trust principal and a stream-scoped
   policy; no wildcards on the resource.
 
-- [ ] T3 — Add the `CfnTopicRule`: SQL `SELECT * FROM 'iot_data'`, Kinesis action
+- [x] T3 — Add the `CfnTopicRule`: SQL `SELECT * FROM 'iot_data'`, Kinesis action
   with `partitionKey = ${vehicleId}` and the T2 role. Check: synth shows exactly
   one `AWS::IoT::TopicRule` whose Kinesis action references `vehicle-telemetry`
   and partition key `${vehicleId}`.
