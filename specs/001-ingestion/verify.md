@@ -122,19 +122,26 @@ drops:       0
 ```
 Expected: `received == published`, `duplicates: 0`, `drops: 0`.
 
-## Result block to paste in the verifier handoff
+## Result block
+
+Measured run (maker + independent checker both ran sim + reader against a live
+dev deploy in account 083340857999 / us-east-1):
 
 ```
-INGESTION VERIFY (deploy YYYY-MM-DD, region us-east-1)
-  stream:        ON_DEMAND / ACTIVE / 4 shards
-  topic:         iot_data messages observed ~2/s
-  fields:        PASS (schema-complete: contract + vss + telemetry + device + route)
-  max latency:   1.8 s    (AC1 < 5 s: PASS)
-  out-of-order:  0         (AC3: PASS)
-  5-min soak:    600 published / 600 received / 0 dup / 0 drop  (AC2: PASS)
-  AC4:           cdk deploy + cdk destroy clean: PASS
+INGESTION VERIFY (deploy 2026-06-26, region us-east-1) — MEASURED
+  deploy:        clean (43 s); stream auto-provisioned 4 shards on-demand
+  fields:        PASS (schema-complete; simulator --validate green offline)
+  records:       90 in a 45 s window across 10 vehicles (maker run)
+                 90 in 45 s, 10 vehicles (independent checker re-run)
+  max latency:   0.97 s  (checker: 0.88 s)        (AC1 < 5 s: PASS)
+  out-of-order:  0                                (AC3: PASS)
+  AC4:           deploy clean; cdk destroy SKIPPED the stream (CDK defaults
+                 Kinesis DeletionPolicy=Retain) — required a manual delete.
+                 PARTIAL: clean teardown needs removalPolicy=DESTROY for dev.
+                 FOLLOW-UP recorded.
+  AC2 (5-min soak, exactly-once / no-drop): NOT RUN this pass — deferred.
 ```
 
-The numbers above are illustrative of a passing run; the real run pastes its own
-measured values. The verifier re-runs Steps 1, 3, 4, 5 itself and rejects if any
-number misses its bound or any field is absent.
+AC1 and AC3 are proven live with measured numbers (maker + checker agree). AC5
+(construct tests) passed earlier. AC4 is partial (teardown needs the
+removalPolicy fix). AC2 (sustained soak) was not run and is a recorded follow-up.
