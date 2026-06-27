@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-iot-data-plane": "^3.1075.0",
+    "@aws-sdk/client-kinesis": "^3.1075.0",
     "ajv": "^8.20.0",
     "aws-cdk-lib": "^2.258.0",
     "constructs": "^10.4.2"

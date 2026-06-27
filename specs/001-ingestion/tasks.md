@@ -38,7 +38,7 @@ bottom; the verifier grades each against its check before the next begins.
   every zone polygon and route file parses (closed ring, >= 3 vertices); exits
   non-zero on any failure.
 
-- [ ] T6 — Build the verification reader `tools/verify/reader.ts` (reads all
+- [x] T6 — Build the verification reader `tools/verify/reader.ts` (reads all
   shards, computes per-record produce->stream latency and per-vehicleId ordering,
   counts published vs received) and run the acceptance runbook in `verify.md`
   end to end. Exact commands and expected numbers live in `verify.md`; it proves
