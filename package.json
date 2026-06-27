@@ -6,6 +6,7 @@
     "build": "tsc --noEmit",
     "synth": "cdk synth",
     "test": "jest --passWithNoTests",
+    "sim": "ts-node tools/simulator/index.ts",
     "loop:triage": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-triage.ps1 -UpdateState",
     "loop:triage:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-triage.ps1",
     "loop:triage:checks": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-triage.ps1 -RunChecks -UpdateState",
@@ -15,6 +16,8 @@
     "loop:worktree:remove": "powershell -ExecutionPolicy Bypass -File ./scripts/loop-worktree.ps1 -Action remove"
   },
   "dependencies": {
+    "@aws-sdk/client-iot-data-plane": "^3.1075.0",
+    "ajv": "^8.20.0",
     "aws-cdk-lib": "^2.258.0",
     "constructs": "^10.4.2"
   },
