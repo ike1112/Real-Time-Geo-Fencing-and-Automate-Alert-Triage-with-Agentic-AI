@@ -4,7 +4,8 @@ import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as kinesis from 'aws-cdk-lib/aws-kinesis';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { DynamoEventSource, SqsDlq } from 'aws-cdk-lib/aws-lambda-event-sources';
 
 /**
  * Geofence processing.
@@ -63,13 +64,26 @@ export class ProcessingStack extends cdk.Stack {
     });
     this.rulesStream.grantWrite(rulesBridge);
 
+    // A poison rule-change that exhausts retries lands here instead of blocking
+    // the shard or vanishing.
+    const rulesBridgeDlq = new sqs.Queue(this, 'RulesBridgeDlq', {
+      queueName: 'geofence-rules-bridge-dlq',
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
     // Read the zone-store change stream from the latest position; the broadcast
     // bootstrap (replaying current rules on processor start) is handled later.
+    // Partial-batch reporting + bisect isolate a bad record so one poison change
+    // doesn't replay the whole batch to expiry; the DLQ catches what still fails.
     rulesBridge.addEventSource(
       new DynamoEventSource(this.geoFencesTable, {
         startingPosition: lambda.StartingPosition.LATEST,
         batchSize: 10,
         retryAttempts: 3,
+        maxRecordAge: cdk.Duration.hours(1),
+        bisectBatchOnError: true,
+        reportBatchItemFailures: true,
+        onFailure: new SqsDlq(rulesBridgeDlq),
       }),
     );
 

@@ -86,21 +86,55 @@ def _client():
     return _kinesis
 
 
+def _forward(pending):
+    """Put the mapped records; return the sequence numbers that failed.
+
+    `pending` is a list of (sequenceNumber, kinesis-entry). A whole-batch send
+    error fails every record; a per-record `ErrorCode` fails just that one.
+    """
+    entries = [entry for _, entry in pending]
+    sequence_numbers = [seq for seq, _ in pending]
+    try:
+        response = _client().put_records(
+            StreamName=RULES_STREAM_NAME, Records=entries
+        )
+    except Exception:  # send failed for the whole batch -> retry all
+        return sequence_numbers
+
+    failed = []
+    for seq, result in zip(sequence_numbers, response.get("Records", [])):
+        if result.get("ErrorCode"):
+            failed.append(seq)
+    return failed
+
+
 def handler(event, _context=None):
-    """Forward each zone change to geofence-rules, partition-keyed by zone id."""
-    records = []
+    """Forward each zone change to geofence-rules, partition-keyed by zone id.
+
+    Returns the partial-batch-failure response so only records that fail to
+    forward are retried, instead of replaying the whole batch on one poison
+    record. Unmappable records (no zone id) are skipped, not failed — they are
+    not retryable.
+    """
+    pending = []
     for record in event.get("Records", []):
         change = to_rule_change(record)
         if change is None:
             continue
-        records.append(
-            {
-                "Data": json.dumps(change).encode("utf-8"),
-                "PartitionKey": change["id"],
-            }
+        sequence_number = record.get("dynamodb", {}).get("SequenceNumber")
+        pending.append(
+            (
+                sequence_number,
+                {
+                    "Data": json.dumps(change).encode("utf-8"),
+                    "PartitionKey": change["id"],
+                },
+            )
         )
 
-    if records:
-        _client().put_records(StreamName=RULES_STREAM_NAME, Records=records)
-
-    return {"forwarded": len(records)}
+    failed = _forward(pending) if pending else []
+    return {
+        "batchItemFailures": [
+            {"itemIdentifier": seq} for seq in failed if seq is not None
+        ]
+    }

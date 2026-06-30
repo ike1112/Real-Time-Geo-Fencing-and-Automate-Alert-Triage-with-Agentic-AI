@@ -1,9 +1,10 @@
-"""Unit tests for the rule-change mapping (pure, no AWS)."""
+"""Unit tests for the rule-change mapping (pure) and the partial-batch contract."""
 
-from handler import to_rule_change
+import handler as handler_module
+from handler import to_rule_change, handler
 
 
-def _stream_record(event_name, *, keys=None, new=None, old=None):
+def _stream_record(event_name, *, keys=None, new=None, old=None, seq=None):
     body = {}
     if keys is not None:
         body["Keys"] = keys
@@ -11,6 +12,8 @@ def _stream_record(event_name, *, keys=None, new=None, old=None):
         body["NewImage"] = new
     if old is not None:
         body["OldImage"] = old
+    if seq is not None:
+        body["SequenceNumber"] = seq
     return {"eventName": event_name, "dynamodb": body}
 
 
@@ -86,3 +89,66 @@ def test_remove_uses_old_image_and_reports_inactive():
 def test_record_without_id_is_skipped():
     record = _stream_record("INSERT", keys={}, new={"active": {"BOOL": True}})
     assert to_rule_change(record) is None
+
+
+# --- partial-batch failure contract ---------------------------------------
+
+
+class _FakeKinesis:
+    """Stand-in Kinesis client; per-record results or a whole-call raise."""
+
+    def __init__(self, *, error_codes=None, raises=False):
+        self.error_codes = error_codes or []
+        self.raises = raises
+
+    def put_records(self, StreamName, Records):  # noqa: N803 (boto3 kwarg name)
+        if self.raises:
+            raise RuntimeError("stream unavailable")
+        results = []
+        for index in range(len(Records)):
+            code = self.error_codes[index] if index < len(self.error_codes) else None
+            results.append({"ErrorCode": code} if code else {"SequenceNumber": "ok"})
+        return {"Records": results, "FailedRecordCount": len(self.error_codes)}
+
+
+def _event(*records):
+    return {"Records": list(records)}
+
+
+def _insert(zone_id, seq):
+    return _stream_record(
+        "INSERT", keys={"id": {"S": zone_id}}, new=_DOWNTOWN_IMAGE, seq=seq
+    )
+
+
+def test_all_forwarded_reports_no_failures(monkeypatch):
+    monkeypatch.setattr(handler_module, "_client", lambda: _FakeKinesis())
+    result = handler(_event(_insert("z1", "seq-1"), _insert("z2", "seq-2")))
+    assert result == {"batchItemFailures": []}
+
+
+def test_per_record_error_reports_only_that_sequence(monkeypatch):
+    # second record errors, first succeeds
+    monkeypatch.setattr(
+        handler_module,
+        "_client",
+        lambda: _FakeKinesis(error_codes=[None, "ProvisionedThroughputExceededException"]),
+    )
+    result = handler(_event(_insert("z1", "seq-1"), _insert("z2", "seq-2")))
+    assert result == {"batchItemFailures": [{"itemIdentifier": "seq-2"}]}
+
+
+def test_whole_batch_send_error_reports_all(monkeypatch):
+    monkeypatch.setattr(handler_module, "_client", lambda: _FakeKinesis(raises=True))
+    result = handler(_event(_insert("z1", "seq-1"), _insert("z2", "seq-2")))
+    assert result == {
+        "batchItemFailures": [{"itemIdentifier": "seq-1"}, {"itemIdentifier": "seq-2"}]
+    }
+
+
+def test_unmappable_record_is_skipped_not_failed(monkeypatch):
+    monkeypatch.setattr(handler_module, "_client", lambda: _FakeKinesis())
+    # one good record + one with no id; the no-id record must not appear as a failure
+    bad = _stream_record("INSERT", keys={}, new={"active": {"BOOL": True}}, seq="seq-bad")
+    result = handler(_event(_insert("z1", "seq-1"), bad))
+    assert result == {"batchItemFailures": []}

@@ -65,9 +65,11 @@ to omit at any scale; **[breadth]** items exceed the pilot's ~2-msg/s operationa
 and are kept deliberately to demonstrate production streaming patterns (portfolio-grade
 scope, chosen over operational-minimum). Each cites the finding and a reference.
 
-- [ ] T11 **[breadth]** — Rules-bridge error handling (extends T3). Turn on
+- [x] T11 **[breadth]** — Rules-bridge error handling (extends T3). Turn on
   `ReportBatchItemFailures` (partial-batch response) on the DynamoDB-Streams ESM, set a
-  max-retry / max-record-age, and an **on-failure destination** (SQS DLQ). Handles
+  max-retry / max-record-age, and an **on-failure destination** (SQS DLQ). Done —
+  independent verifier APPROVED (build + jest 10 + pytest 8 + synth; template inspected;
+  failure contract proven by exact-value tests; idempotency confirmed absent). Handles
   finding **R1**. Why: with stream ESMs a poison record otherwise retries the whole
   batch to expiry. **Idempotency intentionally omitted here:** DynamoDB Streams is
   exactly-once and ordered per item, and a rule write is a state-replace (re-applying is
