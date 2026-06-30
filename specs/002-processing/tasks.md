@@ -17,11 +17,13 @@ grades each Check before the next.
   `aws dynamodb scan --table-name geo-fences` returns 4 active items with valid
   closed-ring polygons.
 
-- [ ] T3 — Add the rules bridge: a Python Lambda with a DynamoDB-Streams
+- [x] T3 — Add the rules bridge: a Python Lambda with a DynamoDB-Streams
   event-source-mapping on `geo-fences`, emitting compact rule-change records to a
   new Kinesis `geofence-rules` stream (partition key `id`). Check: synth shows the
   ESM + stream; unit test maps a sample INSERT/MODIFY/REMOVE image to the expected
-  rule-change record.
+  rule-change record. Done — independent verifier APPROVED (build + jest 8 + pytest 4
+  + synth; mapping boto3-free; scope clean). Note: T2 (zone seed) intentionally not
+  built first — independent of T3.
 
 - [ ] T4 — Point-in-polygon + edge-detection library (Python) with unit tests
   against a concave test polygon (inside/outside/on-edge/near-edge) and an

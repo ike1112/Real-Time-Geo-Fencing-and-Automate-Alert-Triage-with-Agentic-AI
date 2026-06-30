@@ -9,6 +9,11 @@ cdk.out/
 # Loop worktrees (isolated per-task checkouts)
 .worktrees/
 
+# Python (Lambda sources + tests)
+__pycache__/
+.pytest_cache/
+*.pyc
+
 # Private source context — kept locally as background for the architect stage,
 # never published. The committed product artifacts stand on their own.
 docs/*.pdf
