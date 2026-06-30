@@ -32,6 +32,17 @@ approving a spec produced by the architect stage.
   status: done — T1-T8 complete, each checker-approved; AC1/AC3/AC5 verified (T6 live: 90 records, max 0.97s, 0 out-of-order); AC2 soak + AC4 removalPolicy deferred (see Watch List)
   rejections: 1
 
+- [ ] Implement increment 002 — geofence processing
+  spec: specs/002-processing
+  approved: 2026-06-30
+  status: in-progress (Tier-1 only, no deploy per standing directive) — T1 done (stateful
+    resources); T3 done (rules bridge: DDB-Streams->Lambda->geofence-rules, merged 773d263);
+    T11 done (partial-batch + bisect + DLQ on the bridge, merged b22c634), each independently
+    checker-APPROVED. Remaining: T2 seed, T4 geometry, T5 PyFlink, T6 Flink CDK, T7 construct
+    tests, T8 verify.md, T9 live (deferred — needs deploy), T10 follow-ups, T12-T14 hardening.
+    T2 not yet built (independent of T3).
+  rejections: 0
+
 ## High Priority
 
 <!-- Format:
