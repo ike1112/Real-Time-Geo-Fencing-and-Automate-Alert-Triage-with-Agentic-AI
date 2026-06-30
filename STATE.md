@@ -59,6 +59,9 @@ approving a spec produced by the architect stage.
 <!-- Items to monitor but not act on yet -->
 
 Deferred follow-ups (proposals, not yet approved into the queue):
+- Rule-change records (rules bridge) omit the zone `name`, so the processor's breach
+  events fall back to `zoneName = zoneId`. Either propagate `name` on the rule-change
+  record, or have the triage layer look it up. Surfaced building the Flink job.
 - IoT topic rule has no error/dead-letter action — a malformed message is dropped
   silently. Add a republish error action before increment 3.
 - Kinesis stream defaults to DeletionPolicy=Retain, so `cdk destroy` leaves it
