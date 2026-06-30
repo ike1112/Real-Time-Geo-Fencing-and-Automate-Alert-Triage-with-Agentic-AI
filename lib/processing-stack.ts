@@ -9,6 +9,8 @@ import { DynamoEventSource, SqsDlq } from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kinesisanalyticsv2 from 'aws-cdk-lib/aws-kinesisanalyticsv2';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
+import * as cr from 'aws-cdk-lib/custom-resources';
+import { buildZoneItems, toDynamoItem } from '../tools/seed-zones';
 
 /**
  * Geofence processing.
@@ -36,13 +38,42 @@ export class ProcessingStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ProcessingStackProps) {
     super(scope, id, props);
 
+    const geoFencesTableName = 'geo-fences';
     this.geoFencesTable = new dynamodb.Table(this, 'GeoFences', {
-      tableName: 'geo-fences',
+      tableName: geoFencesTableName,
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
       // Dev: tear down cleanly. Production would retain the zone store.
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Seed the four canonical zones on deploy so the store is populated without a
+    // manual step. batchWriteItem uses PutRequest, so re-deploys refresh the items
+    // idempotently. Zone geometry comes from the simulator's canonical definitions.
+    const seedRequest = {
+      RequestItems: {
+        [geoFencesTableName]: buildZoneItems().map((item) => ({
+          PutRequest: { Item: toDynamoItem(item) },
+        })),
+      },
+    };
+    new cr.AwsCustomResource(this, 'SeedZones', {
+      onCreate: {
+        service: 'DynamoDB',
+        action: 'batchWriteItem',
+        parameters: seedRequest,
+        physicalResourceId: cr.PhysicalResourceId.of('geo-fences-zone-seed'),
+      },
+      onUpdate: {
+        service: 'DynamoDB',
+        action: 'batchWriteItem',
+        parameters: seedRequest,
+        physicalResourceId: cr.PhysicalResourceId.of('geo-fences-zone-seed'),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: [this.geoFencesTable.tableArn],
+      }),
     });
 
     this.alertsStream = new kinesis.Stream(this, 'GeofenceAlerts', {

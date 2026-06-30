@@ -71,6 +71,22 @@ describe('ProcessingStack — rules bridge', () => {
   });
 });
 
+describe('ProcessingStack — zone seed', () => {
+  test('a deploy-time custom resource seeds the zone store', () => {
+    template.resourceCountIs('Custom::AWS', 1);
+  });
+
+  test('the seed may batch-write to the geo-fences table', () => {
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({ Action: 'dynamodb:BatchWriteItem' }),
+        ]),
+      }),
+    });
+  });
+});
+
 describe('ProcessingStack — Flink processor', () => {
   test('declares a Managed Flink application with the zipped job artifact', () => {
     template.hasResourceProperties('AWS::KinesisAnalyticsV2::Application', {

@@ -11,11 +11,14 @@ grades each Check before the next.
   export both for increment 3. Check: synth shows the table with
   `StreamSpecification` and `geofence-alerts` as `ON_DEMAND`.
 
-- [ ] T2 — Seed the four Calgary zones into `geo-fences` (downtown-restricted
+- [x] T2 — Seed the four Calgary zones into `geo-fences` (downtown-restricted
   exclusion, depot-foothills containment, airport-yyc exclusion, jobsite-north
   dwell) via a deploy-time custom resource or a seed script. Check: after deploy,
   `aws dynamodb scan --table-name geo-fences` returns 4 active items with valid
-  closed-ring polygons.
+  closed-ring polygons. Done — deploy-time AwsCustomResource (batchWriteItem) seeds
+  items built from the simulator's canonical zones (single source of truth); pure
+  deterministic builder + marshaller, unit + construct tested. Verifier APPROVED via
+  template inspection (4 valid closed rings, scoped IAM). Live scan deferred to deploy.
 
 - [x] T3 — Add the rules bridge: a Python Lambda with a DynamoDB-Streams
   event-source-mapping on `geo-fences`, emitting compact rule-change records to a
