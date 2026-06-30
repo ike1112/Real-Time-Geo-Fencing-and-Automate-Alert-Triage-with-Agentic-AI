@@ -56,9 +56,13 @@ grades each Check before the next.
   stream, not the table, so table-read would be unused privilege. "Reaches RUNNING"
   deferred to the live run (needs deploy); connector jar added to the artifact at build.
 
-- [ ] T7 — Construct tests (CDK assertions): table Streams enabled; rules-bridge
+- [x] T7 — Construct tests (CDK assertions): table Streams enabled; rules-bridge
   ESM present; Flink app + sources/sink wired; `geofence-alerts` on-demand; IAM
-  least-privilege. Check: `npm test` green.
+  least-privilege. Check: `npm test` green. Done — filled the gaps (table
+  StreamSpecification + key schema; geofence-alerts on-demand; Flink role read on both
+  input streams; a no-resource-wildcard guard over all IAM policies). Verifier APPROVED
+  with mutation proof: the wildcard guard examines 4 real data-action statements and
+  fails when a `*` is injected (non-vacuous). jest 26 green; no duplication.
 
 - [ ] T8 — Author `specs/002-processing/verify.md` (live runbook, 001-style):
   drive a violator and confirm one correctly-typed breach event; edit/deactivate a
