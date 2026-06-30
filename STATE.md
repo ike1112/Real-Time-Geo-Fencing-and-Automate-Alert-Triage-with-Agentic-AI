@@ -37,10 +37,12 @@ approving a spec produced by the architect stage.
   approved: 2026-06-30
   status: in-progress (Tier-1 only, no deploy per standing directive) — T1 done (stateful
     resources); T3 done (rules bridge: DDB-Streams->Lambda->geofence-rules, merged 773d263);
-    T11 done (partial-batch + bisect + DLQ on the bridge, merged b22c634), each independently
-    checker-APPROVED. Remaining: T2 seed, T4 geometry, T5 PyFlink, T6 Flink CDK, T7 construct
-    tests, T8 verify.md, T9 live (deferred — needs deploy), T10 follow-ups, T12-T14 hardening.
-    T2 not yet built (independent of T3).
+    T11 done (partial-batch + bisect + DLQ on the bridge, merged b22c634); T4 done (point-in-
+    polygon + edge detection lib in processor/geofence, merged 6e48235), each independently
+    checker-APPROVED. Python suite runs from root (importlib pytest.ini + conftest). Remaining:
+    T2 seed, T5 PyFlink job (consumes processor/geofence), T6 Flink CDK, T7 construct tests,
+    T8 verify.md, T9 live (deferred — needs deploy), T10 follow-ups, T12-T14 hardening.
+    T2 not yet built (independent of T3/T4).
   rejections: 0
 
 ## High Priority
