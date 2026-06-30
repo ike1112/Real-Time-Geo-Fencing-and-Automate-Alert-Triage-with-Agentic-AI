@@ -1,12 +1,16 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
+import { IngestionStack } from '../lib/ingestion-stack';
 import { ProcessingStack } from '../lib/processing-stack';
 
-describe('ProcessingStack — rules bridge', () => {
-  const app = new cdk.App();
-  const stack = new ProcessingStack(app, 'TestProcessingStack');
-  const template = Template.fromStack(stack);
+const app = new cdk.App();
+const ingestion = new IngestionStack(app, 'TestIngestionStack');
+const stack = new ProcessingStack(app, 'TestProcessingStack', {
+  telemetryStream: ingestion.telemetryStream,
+});
+const template = Template.fromStack(stack);
 
+describe('ProcessingStack — rules bridge', () => {
   test('geofence-rules is an on-demand stream', () => {
     template.hasResourceProperties('AWS::Kinesis::Stream', {
       Name: 'geofence-rules',
@@ -63,6 +67,68 @@ describe('ProcessingStack — rules bridge', () => {
   test('a dead-letter queue catches exhausted rule-change records', () => {
     template.hasResourceProperties('AWS::SQS::Queue', {
       QueueName: 'geofence-rules-bridge-dlq',
+    });
+  });
+});
+
+describe('ProcessingStack — Flink processor', () => {
+  test('declares a Managed Flink application with the zipped job artifact', () => {
+    template.hasResourceProperties('AWS::KinesisAnalyticsV2::Application', {
+      RuntimeEnvironment: Match.stringLikeRegexp('^FLINK-'),
+      ApplicationConfiguration: Match.objectLike({
+        ApplicationCodeConfiguration: Match.objectLike({ CodeContentType: 'ZIPFILE' }),
+      }),
+    });
+  });
+
+  test('checkpointing and snapshots are enabled for fault tolerance', () => {
+    template.hasResourceProperties('AWS::KinesisAnalyticsV2::Application', {
+      ApplicationConfiguration: Match.objectLike({
+        FlinkApplicationConfiguration: Match.objectLike({
+          CheckpointConfiguration: Match.objectLike({
+            CheckpointingEnabled: true,
+            CheckpointInterval: 60000,
+          }),
+        }),
+        ApplicationSnapshotConfiguration: { SnapshotsEnabled: true },
+      }),
+    });
+  });
+
+  test('runtime properties set the python entry and carry the stream wiring', () => {
+    template.hasResourceProperties('AWS::KinesisAnalyticsV2::Application', {
+      ApplicationConfiguration: Match.objectLike({
+        EnvironmentProperties: Match.objectLike({
+          PropertyGroups: Match.arrayWith([
+            Match.objectLike({
+              PropertyGroupId: 'kinesis.analytics.flink.run.options',
+              PropertyMap: Match.objectLike({ python: 'geofence/job.py' }),
+            }),
+            Match.objectLike({ PropertyGroupId: 'geofence.streams' }),
+          ]),
+        }),
+      }),
+    });
+  });
+
+  test('the processor role trusts Kinesis Analytics and can write alerts', () => {
+    template.hasResourceProperties('AWS::IAM::Role', {
+      AssumeRolePolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Principal: { Service: 'kinesisanalytics.amazonaws.com' },
+          }),
+        ]),
+      }),
+    });
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['kinesis:PutRecord', 'kinesis:PutRecords']),
+          }),
+        ]),
+      }),
     });
   });
 });
