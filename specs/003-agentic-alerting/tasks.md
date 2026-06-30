@@ -64,6 +64,47 @@ grades each Check before the next.
 - [ ] T12 — Record deferred follow-ups (on-call routing, dedup hardening,
   threshold tuning from OQ-1) as STATE.md queue proposals. Check: captured.
 
+## Resilience hardening (streaming data characteristics)
+
+Posture (right-sizing is explicit — see the tags): **[correctness]** items are wrong
+to omit at any scale; **[breadth]** items exceed the pilot's operational need and are
+kept deliberately to demonstrate production streaming patterns (portfolio-grade scope).
+The end-to-end pipeline is at-least-once, so delivery correctness lives here at the
+consumer. Each cites the finding + a reference.
+
+- [ ] T13 **[correctness]** — Idempotent publish (extends T6/T7). The `dedupeKey`
+  (`vehicleId|zoneId|breachType|eventTime`) must be **authoritative**: the publisher
+  records it in a DynamoDB persistence layer (conditional write / Powertools
+  idempotency) so a redelivered breach does not send a second email. Handles finding
+  **R4** and is the mechanism behind the single-delivery claim (AC5). Why: partial-batch
+  + at-least-once streams lower but do not eliminate reprocessing.
+  Ref: https://docs.aws.amazon.com/powertools/python/latest/utilities/idempotency/ .
+  Check: unit test sends the same `dedupeKey` twice and asserts one `SNS:Publish`.
+
+- [ ] T14 **[breadth]** — DLQs + alarms (extends T1). `alert-queue` redrive policy with a
+  `maxReceiveCount` → an SQS DLQ; a **DLQ on the SNS subscription**; a CloudWatch alarm
+  on each DLQ's depth. Handles finding **R3**. Why: a poison alert or failed delivery
+  must land somewhere observable, not vanish or loop.
+  Ref: https://docs.aws.amazon.com/sns/latest/dg/sns-dead-letter-queues.html .
+  Check: construct test asserts the SQS redrive policy + DLQ, the SNS-subscription DLQ,
+  and the depth alarms.
+
+- [ ] T15 **[breadth]** — Bridge error handling (extends T5/T7). `ReportBatchItemFailures` on the
+  Kinesis (analyzer) and SQS (publisher) ESMs, max-retry / max-record-age, and an
+  on-failure destination. Handles finding **R1** at the triage bridges. Why: same
+  poison-record-blocks-the-batch failure mode as the rules bridge.
+  Ref: https://docs.aws.amazon.com/lambda/latest/dg/services-kinesis-batchfailurereporting.html .
+  Check: construct test asserts `FunctionResponseTypes=[ReportBatchItemFailures]` + the
+  on-failure destination on both ESMs.
+
+- [ ] T16 **[correctness]** — Bedrock throttling resilience (extends T3/T6). Retry-with-exponential-backoff
+  on `ThrottlingException` for `InvokeModel`, and use a **cross-region inference profile**
+  (`us.` model ids) for headroom. Handles finding **R5**. Why: on-demand inference is
+  governed by per-model RPM/TPM quotas and throttles at peak.
+  Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html .
+  Check: unit test asserts backoff-retry on a simulated throttle; the runtime env uses
+  an inference-profile id (recorded as a deploy-time assumption).
+
 ## Traceability (task -> what it satisfies)
 
 - T1 queue/topic -> FR3/FR4, AC6 ; T2 memory -> FR2, AC2 ;
@@ -72,6 +113,10 @@ grades each Check before the next.
   T8 eval harness -> FR1, AC1 (H1) ; T9 construct tests -> AC6 ;
   T10 runbook -> AC1..AC5 (made concrete) ; T11 live run -> AC1,AC2,AC3,AC4,AC5 ;
   T12 -> scope discipline.
+- T13 idempotent publish -> review R4 + AC5 (single delivery) ; T14 DLQs+alarms ->
+  review R3 ; T15 bridge error handling -> review R1 ; T16 Bedrock backoff ->
+  review R5 (resilience hardening; see docs/well-architected-review.md and
+  docs/streaming-architecture-review.md §A3).
 - Every AC maps to >= 1 task; every task to >= 1 FR/AC.
 
 ## Verification tiers (how "done" is proven)

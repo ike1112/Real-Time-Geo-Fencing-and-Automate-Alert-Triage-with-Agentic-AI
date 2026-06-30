@@ -56,6 +56,53 @@ grades each Check before the next.
 - [ ] T10 — Record deferred follow-ups (dwell debounce per OQ-1; broadcast
   bootstrap hardening) as STATE.md queue proposals. Check: captured, scope minimal.
 
+## Resilience hardening (streaming data characteristics)
+
+Posture (right-sizing is explicit — see the tags): **[correctness]** items are wrong
+to omit at any scale; **[breadth]** items exceed the pilot's ~2-msg/s operational need
+and are kept deliberately to demonstrate production streaming patterns (portfolio-grade
+scope, chosen over operational-minimum). Each cites the finding and a reference.
+
+- [ ] T11 **[breadth]** — Rules-bridge error handling (extends T3). Turn on
+  `ReportBatchItemFailures` (partial-batch response) on the DynamoDB-Streams ESM, set a
+  max-retry / max-record-age, and an **on-failure destination** (SQS DLQ). Handles
+  finding **R1**. Why: with stream ESMs a poison record otherwise retries the whole
+  batch to expiry. **Idempotency intentionally omitted here:** DynamoDB Streams is
+  exactly-once and ordered per item, and a rule write is a state-replace (re-applying is
+  harmless), so dedupe would be dead weight — contrast `003` T13, where it is
+  load-bearing. (This judgment is the point, not an oversight.)
+  Refs: https://docs.aws.amazon.com/lambda/latest/dg/services-kinesis-batchfailurereporting.html ,
+  https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Streams.Lambda.html .
+  Check: construct test asserts `FunctionResponseTypes=[ReportBatchItemFailures]` +
+  the DLQ/on-failure destination; unit test returns a partial-failure for a bad record.
+
+- [ ] T12 **[correctness]** — Flink reliability config (extends T6). Enable **checkpointing** (interval
+  ~60 s) for fault recovery and **snapshots** (`ApplicationSnapshotConfiguration` +
+  `ApplicationRestoreConfiguration`) for exactly-once across updates/scaling. Set this
+  at the **MSF application config level, not in app code** (MSF rejects in-code
+  checkpoint/parallelism config). Handles finding **R2**. Why: without it a restart
+  loses state and re-processes or drops in-flight records.
+  Refs: https://docs.aws.amazon.com/managed-flink/latest/java/how-fault.html ,
+  https://docs.aws.amazon.com/managed-flink/latest/java/how-snapshots.html ,
+  https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-kinesisanalyticsv2-application-applicationsnapshotconfiguration.html .
+  Check: construct test asserts `CheckpointConfiguration` enabled + snapshots enabled
+  on the `AWS::KinesisAnalyticsV2::Application`.
+
+- [ ] T13 **[correctness]** — Broadcast-state bootstrap as a tested acceptance criterion (extends T5).
+  The job must not evaluate telemetry before the initial rule set is loaded (else early
+  breaches are missed); replay `geofence-rules` from an early position and/or hold
+  telemetry until first rule load. Handles finding **R2** (bootstrap race) + design
+  risk already flagged. Check: the fixture mini-run asserts a telemetry event arriving
+  before any rule produces **no** breach, and the same event after the rule load
+  produces the expected breach.
+
+- [ ] T14 **[breadth]** — Poison-telemetry handling in the Flink source (extends T5). A
+  non-deserializable telemetry record must be dropped and counted (a metric), not stall
+  the shard. Handles finding **R1** (stream-side). Note: the controlled simulator can't
+  emit malformed records today, so this guards a case that can't occur at pilot — kept
+  as a deliberate resilience demonstration, not an operational need. Check: fixture
+  mini-run feeds a malformed record and asserts the job continues + increments the drop counter.
+
 ## Traceability (task -> what it satisfies)
 
 - T1 store+output -> FR3, AC5 ; T2 seed -> FR3 ; T3 rules bridge -> FR4, AC2 ;
@@ -63,6 +110,10 @@ grades each Check before the next.
   T6 Flink infra -> AC5 ; T7 construct tests -> AC3/AC5 (template shape) ;
   T8 runbook -> AC1/AC2/AC4 (made concrete) ; T9 live run -> AC1, AC2, AC4 ;
   T10 -> scope discipline.
+- T11 rules-bridge errors -> review R1 ; T12 Flink checkpoint/snapshot -> review R2 ;
+  T13 bootstrap-as-AC -> review R2 + AC2/AC4 (correctness under live updates) ;
+  T14 poison-telemetry -> review R1 (resilience hardening; see
+  docs/well-architected-review.md and docs/streaming-architecture-review.md §A3).
 - Every AC maps to >= 1 task; every task maps to >= 1 FR/AC.
 
 ## Verification tiers (how "done" is proven)

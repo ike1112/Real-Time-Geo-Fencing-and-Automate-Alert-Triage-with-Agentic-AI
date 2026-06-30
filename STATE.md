@@ -56,6 +56,31 @@ Deferred follow-ups (proposals, not yet approved into the queue):
 - AWS Well-Architected review (docs/well-architected-review.md) recorded further
   hardening for 002/003 (Lambda DLQs, Flink checkpointing, blended model posture,
   Bedrock retry/backoff) — apply each when its increment builds.
+- Streaming review (docs/streaming-architecture-review.md) findings are now turned
+  into tasks (research-backed, with references):
+  - Resilience hardening folded into the owning increment: 002/tasks.md T11–T14
+    (rules-bridge partial-batch+DLQ+idempotency R1; Flink checkpoint/snapshot R2;
+    broadcast bootstrap-as-tested-AC R2; poison-telemetry handling R1) and
+    003/tasks.md T13–T16 (idempotent publish keyed on dedupeKey R4; SQS+SNS DLQs R3;
+    bridge ReportBatchItemFailures R1; Bedrock backoff + inference profile R5).
+  - Monitoring system specced as its own increment: specs/004-observability/
+    {spec,design,tasks}.md — two-layer (component health + in-band-timestamp latency
+    accumulation), EMF, CfnDashboard + alarms; on-demand-appropriate metric set
+    (shard-level/utilization deferred to scale-time per SC1). Closes general-review O1.
+  - Still documentation-only (not yet tasked): SC1 per-vehicle one-shard bound note in
+    001/design.md; SC3 broadcast ceiling; single-region/no-DR explicit non-goal;
+    L4 split detection-vs-triage SLOs in 003/spec.md.
+- None of 002 T11–14, 003 T13–16, or 004 built/deployed yet — all DRAFT awaiting the
+  same loop gate; each is Tier-1 verifiable before any deploy.
+- Over-engineering audit (2026-06-30): user asked to right-size the new tasks; chose
+  **portfolio-grade** scope for the production observability/resilience layer (full
+  CloudWatch dashboard + alarm fleet + DLQs kept deliberately as a competence showcase,
+  exceeding the ~2-msg/s operational need — labeled as intentional in 004/spec.md
+  "Scope posture" and via [correctness]/[breadth] tags on 002 T11–14 and 003 T13–16).
+  One genuine cut applied regardless of lens: removed idempotency from 002 T11
+  (rule-changes are state-replace + DynamoDB Streams is exactly-once per item, so
+  dedupe is dead weight; contrast 003 T13 where it is load-bearing). Operational-minimum
+  (probe-only, defer dashboard/alarms) remains a documented one-line fallback.
 
 ## Recent Noise
 
