@@ -35,15 +35,16 @@ approving a spec produced by the architect stage.
 - [ ] Implement increment 002 — geofence processing
   spec: specs/002-processing
   approved: 2026-06-30
-  status: in-progress (Tier-1 only, no deploy per standing directive) — T1 done (stateful
-    resources); T3 done (rules bridge: DDB-Streams->Lambda->geofence-rules, merged 773d263);
-    T11 done (partial-batch + bisect + DLQ on the bridge, merged b22c634); T4 done (point-in-
-    polygon + edge detection lib in processor/geofence, merged 6e48235), each independently
-    checker-APPROVED. Python suite runs from root (importlib pytest.ini + conftest). Remaining:
-    T2 seed, T5 PyFlink job (consumes processor/geofence), T6 Flink CDK, T7 construct tests,
-    T8 verify.md, T9 live (deferred — needs deploy), T10 follow-ups, T12-T14 hardening.
-    T2 not yet built (independent of T3/T4).
-  rejections: 0
+  status: in-progress (Tier-1 only, no deploy per standing directive). Done, each
+    independently checker-APPROVED: T1 stateful resources; T3 rules bridge
+    (DDB-Streams->Lambda->geofence-rules, 773d263); T11 partial-batch+bisect+DLQ on the
+    bridge (b22c634); T4 point-in-polygon + edge lib (6e48235); T5 PyFlink job — pure
+    detector core + thin Flink adapter (246357c); T6 Managed Flink app in CDK + T12
+    checkpointing/snapshots (8b6f8ca). Python suite runs from root (importlib pytest.ini
+    + conftest). Remaining: T2 seed (independent), T7 comprehensive construct tests,
+    T8 verify.md, T14 Flink poison handling [breadth], T9 live (deferred — needs deploy),
+    T10 follow-ups. Tier-1 green: jest 14, pytest 34, build, synth.
+  rejections: 1 (T5: a task label in a comment; fixed + re-approved)
 
 ## High Priority
 
