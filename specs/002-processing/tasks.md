@@ -32,12 +32,16 @@ grades each Check before the next.
   the near-reflex point a bbox impl would misclassify; std-lib only). Added importlib
   pytest config + root conftest so the whole Python suite runs from root.
 
-- [ ] T5 — PyFlink job: source `vehicle-telemetry` (keyed by `vehicleId`) +
+- [x] T5 — PyFlink job: source `vehicle-telemetry` (keyed by `vehicleId`) +
   broadcast `geofence-rules`; `KeyedBroadcastProcessFunction` updates the active
   zone set on rule changes and, per telemetry position, tests all active zones and
   emits a factual breach event per violated zone to `geofence-alerts`. Package as
   the Managed Flink app artifact. Check: job builds/packages; a local mini-run over
-  a fixture telemetry+rules sequence emits the expected breach events.
+  a fixture telemetry+rules sequence emits the expected breach events. Done — pure
+  detector core (processor/geofence/detector.py) + thin Flink adapter (job.py
+  delegating to it); 9 mini-run tests (AC1/AC4, per-vehicle isolation). Independent
+  verifier rejected once (a `T6` label in a comment — fixed), then APPROVED (34 tests,
+  own breach probe). Connector wiring + live run deferred to the Flink-app task / deploy.
 
 - [ ] T6 — Wire the Managed Service for Apache Flink application in CDK pointing at
   the artifact, both stream sources, and the output stream, with runtime config.
