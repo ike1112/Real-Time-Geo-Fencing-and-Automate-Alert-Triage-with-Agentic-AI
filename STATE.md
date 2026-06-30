@@ -40,10 +40,11 @@ approving a spec produced by the architect stage.
     (DDB-Streams->Lambda->geofence-rules, 773d263); T11 partial-batch+bisect+DLQ on the
     bridge (b22c634); T4 point-in-polygon + edge lib (6e48235); T5 PyFlink job — pure
     detector core + thin Flink adapter (246357c); T6 Managed Flink app in CDK + T12
-    checkpointing/snapshots (8b6f8ca). Python suite runs from root (importlib pytest.ini
-    + conftest). Remaining: T2 seed (independent), T7 comprehensive construct tests,
-    T8 verify.md, T14 Flink poison handling [breadth], T9 live (deferred — needs deploy),
-    T10 follow-ups. Tier-1 green: jest 14, pytest 34, build, synth.
+    checkpointing/snapshots (8b6f8ca); T2 zone seed — deploy-time AwsCustomResource from
+    the simulator's canonical zones (d37d151). Python suite runs from root (importlib
+    pytest.ini + conftest). Remaining: T7 comprehensive construct tests, T8 verify.md,
+    T14 Flink poison handling [breadth], T9 live (deferred — needs deploy), T10
+    follow-ups. Tier-1 green: jest 22, pytest 34, build, synth.
   rejections: 1 (T5: a task label in a comment; fixed + re-approved)
 
 ## High Priority
