@@ -48,4 +48,21 @@ describe('ProcessingStack — rules bridge', () => {
       }),
     });
   });
+
+  test('the event source reports partial-batch failures, bisects, and ages out', () => {
+    template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+      FunctionResponseTypes: ['ReportBatchItemFailures'],
+      BisectBatchOnFunctionError: true,
+      MaximumRecordAgeInSeconds: 3600,
+      DestinationConfig: Match.objectLike({
+        OnFailure: Match.objectLike({ Destination: Match.anyValue() }),
+      }),
+    });
+  });
+
+  test('a dead-letter queue catches exhausted rule-change records', () => {
+    template.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'geofence-rules-bridge-dlq',
+    });
+  });
 });
