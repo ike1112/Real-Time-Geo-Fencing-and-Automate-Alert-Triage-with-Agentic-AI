@@ -64,11 +64,15 @@ grades each Check before the next.
   with mutation proof: the wildcard guard examines 4 real data-action statements and
   fails when a `*` is injected (non-vacuous). jest 26 green; no duplication.
 
-- [ ] T8 — Author `specs/002-processing/verify.md` (live runbook, 001-style):
+- [x] T8 — Author `specs/002-processing/verify.md` (live runbook, 001-style):
   drive a violator and confirm one correctly-typed breach event; edit/deactivate a
   zone and measure store-edit-to-effect latency (< 60 s, AC2/H2); confirm an
   in-zone vehicle produces no breaches. Check: runbook is runnable and lists exact
-  commands + expected numbers.
+  commands + expected numbers. Done — reconciled the plan-stage draft with the built
+  implementation: real simulator flags (no `--scenario`), natural breach scenarios
+  (Memorial→downtown, Deerfoot→airport), correct test path, self-contained CLI for the
+  rule-latency timing, and honest prerequisites (job main() connector wiring + jar
+  bundling). Verifier APPROVED via full claim-to-code cross-check; Step 4 runs green.
 
 - [ ] T9 — Run verify.md end to end against a dev deploy (maker agent if creds
   present; else human). Check: filled result block pasted in the handoff — breach
