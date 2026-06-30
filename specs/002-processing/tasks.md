@@ -25,9 +25,12 @@ grades each Check before the next.
   + synth; mapping boto3-free; scope clean). Note: T2 (zone seed) intentionally not
   built first — independent of T3.
 
-- [ ] T4 — Point-in-polygon + edge-detection library (Python) with unit tests
+- [x] T4 — Point-in-polygon + edge-detection library (Python) with unit tests
   against a concave test polygon (inside/outside/on-edge/near-edge) and an
-  in/out-sequence edge detector. Check: `pytest` green; AC3 cases pass.
+  in/out-sequence edge detector. Check: `pytest` green; AC3 cases pass. Done —
+  independent verifier APPROVED (full suite 25 passed; ran its own concave probe incl.
+  the near-reflex point a bbox impl would misclassify; std-lib only). Added importlib
+  pytest config + root conftest so the whole Python suite runs from root.
 
 - [ ] T5 — PyFlink job: source `vehicle-telemetry` (keyed by `vehicleId`) +
   broadcast `geofence-rules`; `KeyedBroadcastProcessFunction` updates the active
