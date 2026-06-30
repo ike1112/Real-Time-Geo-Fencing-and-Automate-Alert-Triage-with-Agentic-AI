@@ -5,6 +5,7 @@
 node_modules/
 cdk.out/
 .cdk.staging/
+*.err
 
 # Loop worktrees (isolated per-task checkouts)
 .worktrees/
