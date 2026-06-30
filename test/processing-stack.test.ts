@@ -148,3 +148,59 @@ describe('ProcessingStack — Flink processor', () => {
     });
   });
 });
+
+describe('ProcessingStack — stateful store and least privilege', () => {
+  test('geo-fences table has change streams (new and old images), keyed by id', () => {
+    template.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'geo-fences',
+      KeySchema: Match.arrayWith([{ AttributeName: 'id', KeyType: 'HASH' }]),
+      StreamSpecification: { StreamViewType: 'NEW_AND_OLD_IMAGES' },
+    });
+  });
+
+  test('geofence-alerts is an on-demand stream', () => {
+    template.hasResourceProperties('AWS::Kinesis::Stream', {
+      Name: 'geofence-alerts',
+      StreamModeDetails: { StreamMode: 'ON_DEMAND' },
+    });
+  });
+
+  test('the processor role can read both input streams (sources wired)', () => {
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['kinesis:GetRecords', 'kinesis:GetShardIterator']),
+          }),
+        ]),
+      }),
+    });
+  });
+
+  test('data-plane grants are scoped — no resource wildcards', () => {
+    const dataActions = [
+      'kinesis:PutRecord',
+      'kinesis:PutRecords',
+      'kinesis:GetRecords',
+      'dynamodb:BatchWriteItem',
+    ];
+    const policies = template.findResources('AWS::IAM::Policy');
+    for (const policy of Object.values(policies)) {
+      const statements = policy.Properties.PolicyDocument.Statement as Array<{
+        Action: string | string[];
+        Resource: unknown;
+      }>;
+      for (const statement of statements) {
+        const actions = Array.isArray(statement.Action)
+          ? statement.Action
+          : [statement.Action];
+        if (actions.some((a) => dataActions.includes(a))) {
+          expect(statement.Resource).not.toBe('*');
+          if (Array.isArray(statement.Resource)) {
+            expect(statement.Resource).not.toContain('*');
+          }
+        }
+      }
+    }
+  });
+});
