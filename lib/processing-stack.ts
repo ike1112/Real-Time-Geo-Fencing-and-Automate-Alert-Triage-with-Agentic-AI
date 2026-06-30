@@ -6,6 +6,9 @@ import * as kinesis from 'aws-cdk-lib/aws-kinesis';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { DynamoEventSource, SqsDlq } from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kinesisanalyticsv2 from 'aws-cdk-lib/aws-kinesisanalyticsv2';
+import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 
 /**
  * Geofence processing.
@@ -15,6 +18,11 @@ import { DynamoEventSource, SqsDlq } from 'aws-cdk-lib/aws-lambda-event-sources'
  * in near-real-time; breach events land on a durable stream the triage layer
  * reads. The processor itself (stream job + rule-change bridge) is added next.
  */
+export interface ProcessingStackProps extends cdk.StackProps {
+  /** Telemetry stream from the ingestion stack that the processor reads. */
+  readonly telemetryStream: kinesis.IStream;
+}
+
 export class ProcessingStack extends cdk.Stack {
   /** Runtime-editable zone definitions; change streams drive live updates. */
   public readonly geoFencesTable: dynamodb.Table;
@@ -25,7 +33,7 @@ export class ProcessingStack extends cdk.Stack {
   /** Zone edits, captured from the table's change stream, for the processor. */
   public readonly rulesStream: kinesis.Stream;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: ProcessingStackProps) {
     super(scope, id, props);
 
     this.geoFencesTable = new dynamodb.Table(this, 'GeoFences', {
@@ -86,6 +94,89 @@ export class ProcessingStack extends cdk.Stack {
         onFailure: new SqsDlq(rulesBridgeDlq),
       }),
     );
+
+    // Package the PyFlink job + its pure libraries as the application artifact.
+    // Tests/caches are excluded; the Kinesis connector jar is added to the zip at
+    // build time for deployment.
+    const processorCode = new Asset(this, 'ProcessorCode', {
+      path: path.join(__dirname, '..', 'processor'),
+      exclude: ['**/test_*.py', '**/__pycache__', '**/*.pyc'],
+    });
+
+    // The processor reads both input streams and writes the alert stream. Least
+    // privilege: it consumes zone edits via the geofence-rules stream, not the
+    // table, so it gets no table permission.
+    const processorRole = new iam.Role(this, 'ProcessorRole', {
+      assumedBy: new iam.ServicePrincipal('kinesisanalytics.amazonaws.com'),
+      description: 'Lets the geofence Flink app read telemetry/rules and write alerts',
+    });
+    props.telemetryStream.grantRead(processorRole);
+    this.rulesStream.grantRead(processorRole);
+    this.alertsStream.grantWrite(processorRole);
+    processorCode.grantRead(processorRole);
+
+    new kinesisanalyticsv2.CfnApplication(this, 'GeofenceProcessor', {
+      applicationName: 'geofence-processor',
+      runtimeEnvironment: 'FLINK-1_20',
+      serviceExecutionRole: processorRole.roleArn,
+      applicationConfiguration: {
+        applicationCodeConfiguration: {
+          codeContentType: 'ZIPFILE',
+          codeContent: {
+            s3ContentLocation: {
+              bucketArn: processorCode.bucket.bucketArn,
+              fileKey: processorCode.s3ObjectKey,
+            },
+          },
+        },
+        environmentProperties: {
+          propertyGroups: [
+            {
+              propertyGroupId: 'kinesis.analytics.flink.run.options',
+              propertyMap: {
+                python: 'geofence/job.py',
+                // Kinesis connector jar, added to the artifact at build time.
+                jarfile: 'lib/flink-sql-connector-kinesis.jar',
+              },
+            },
+            {
+              propertyGroupId: 'geofence.streams',
+              propertyMap: {
+                region: this.region,
+                telemetryStream: props.telemetryStream.streamName,
+                rulesStream: this.rulesStream.streamName,
+                alertsStream: this.alertsStream.streamName,
+              },
+            },
+          ],
+        },
+        flinkApplicationConfiguration: {
+          // Checkpointing for fault recovery; snapshots for exactly-once across
+          // updates and scaling. Set here at the app-config level — MSF does not
+          // allow checkpoint/parallelism config in the job code.
+          checkpointConfiguration: {
+            configurationType: 'CUSTOM',
+            checkpointingEnabled: true,
+            checkpointInterval: 60000,
+            minPauseBetweenCheckpoints: 5000,
+          },
+          monitoringConfiguration: {
+            configurationType: 'CUSTOM',
+            logLevel: 'INFO',
+            metricsLevel: 'APPLICATION',
+          },
+          parallelismConfiguration: {
+            configurationType: 'CUSTOM',
+            parallelism: 1,
+            parallelismPerKpu: 1,
+            autoScalingEnabled: false,
+          },
+        },
+        applicationSnapshotConfiguration: {
+          snapshotsEnabled: true,
+        },
+      },
+    });
 
     new cdk.CfnOutput(this, 'GeoFencesTableName', {
       value: this.geoFencesTable.tableName,

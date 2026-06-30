@@ -10,5 +10,8 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-new IngestionStack(app, 'IngestionStack', { env });
-new ProcessingStack(app, 'ProcessingStack', { env });
+const ingestion = new IngestionStack(app, 'IngestionStack', { env });
+new ProcessingStack(app, 'ProcessingStack', {
+  env,
+  telemetryStream: ingestion.telemetryStream,
+});

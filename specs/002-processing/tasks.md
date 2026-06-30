@@ -43,10 +43,15 @@ grades each Check before the next.
   verifier rejected once (a `T6` label in a comment — fixed), then APPROVED (34 tests,
   own breach probe). Connector wiring + live run deferred to the Flink-app task / deploy.
 
-- [ ] T6 — Wire the Managed Service for Apache Flink application in CDK pointing at
+- [x] T6 — Wire the Managed Service for Apache Flink application in CDK pointing at
   the artifact, both stream sources, and the output stream, with runtime config.
   Check: synth shows the Flink app + IAM (read telemetry/rules, write alerts, read
-  table); app reaches RUNNING on deploy with both sources connected.
+  table); app reaches RUNNING on deploy with both sources connected. Done (with T12)
+  — independent verifier APPROVED via direct template inspection: FLINK-1_20, ZIPFILE
+  asset, run-options python entry + stream wiring, least-privilege role. Deviation:
+  no geo-fences table grant — the processor reads zone edits via the geofence-rules
+  stream, not the table, so table-read would be unused privilege. "Reaches RUNNING"
+  deferred to the live run (needs deploy); connector jar added to the artifact at build.
 
 - [ ] T7 — Construct tests (CDK assertions): table Streams enabled; rules-bridge
   ESM present; Flink app + sources/sink wired; `geofence-alerts` on-demand; IAM
@@ -87,7 +92,9 @@ scope, chosen over operational-minimum). Each cites the finding and a reference.
   Check: construct test asserts `FunctionResponseTypes=[ReportBatchItemFailures]` +
   the DLQ/on-failure destination; unit test returns a partial-failure for a bad record.
 
-- [ ] T12 **[correctness]** — Flink reliability config (extends T6). Enable **checkpointing** (interval
+- [x] T12 **[correctness]** — Done (built with T6; verifier confirmed CheckpointingEnabled
+  + 60s interval + SnapshotsEnabled in the synthesized app, set at app-config level not
+  in job code). Flink reliability config (extends T6). Enable **checkpointing** (interval
   ~60 s) for fault recovery and **snapshots** (`ApplicationSnapshotConfiguration` +
   `ApplicationRestoreConfiguration`) for exactly-once across updates/scaling. Set this
   at the **MSF application config level, not in app code** (MSF rejects in-code
