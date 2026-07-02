@@ -1,116 +1,147 @@
 # Verify 003 — Agentic Alert Triage & Delivery (runbook)
 
-Concrete, runnable steps proving the AI layer suppresses false positives and
-retains genuine high/critical events (H1), only high/critical are delivered,
-alerts are four-part and human-readable, memory informs repeat events, and a
-genuine breach yields exactly one delivery. This is the acceptance script for T11.
+Concrete, runnable steps proving the AI layer suppresses false positives while
+retaining genuine incidents and beats a tuned baseline (H1/AC1), the gate delivers
+only high/critical (AC3), a delivered alert carries the four-part content (AC4),
+memory informs a repeat event (AC2), and a genuine breach is delivered exactly once
+(AC5). This is the acceptance script for the deferred deploy task.
 
-## Prerequisites
+> Local checks (Step 1) run today with no AWS. The deploy + live steps (2–6) run
+> when the deploy hold is lifted, and have the prerequisites below. Runtime/memory
+> names use underscores (`geofence_alert_analyzer`, `geofence_alert_publisher`,
+> `geofence_vehicle_memory`) — AgentCore rejects hyphens in these names.
 
-- `001` + `002` + `003` deployed. Both AgentCore runtimes READY, Memory ACTIVE,
-  SQS `alert-queue`, SNS topic with a **confirmed** email subscription, both
-  event-source-mappings. Docker available (agent image build), Bedrock model
-  access in-region, `BEDROCK_MODEL_ID` set (dev default: Claude Haiku 4.5).
-- A labeled breach set (from `001` scenarios via `002`, or fixtures) at
-  `eval/data/labeled_breaches.jsonl`, ground-truth labels hidden from the agent.
+## Prerequisites for the live run
+
+1. **Docker with ARM64 build support** (`docker buildx`) — the two AgentCore runtime
+   images (`agents/analyzer`, `agents/publisher`) are `linux/arm64`; CDK builds them
+   from the `agents/` context at deploy.
+2. **Bedrock model access** in the deploy region for the configured inference-profile
+   ids. Defaults are cross-region `us.` profiles (finding R5); confirm the exact ids
+   and region availability, then pass them as context if they differ:
+   `-c analyzerModelId=... -c publisherModelId=...`.
+3. **A confirmable email** for delivery: `-c alertEmail=you@example.com`. AWS sends a
+   one-time subscription confirmation; confirm it before Step 4 (AC5 is also checkable
+   without the inbox via the idempotency table — see Step 6).
+4. Tools: AWS CLI v2, `jq`, Docker, Node, Python (pytest). AWS creds for a dev account.
 
 ```bash
 REGION=us-east-1
-TOPIC_ARN=<arn of geofence-alerts-topic>
-QUEUE_URL=<url of alert-queue>
+ALERTS=geofence-alerts
 ```
 
-## Step 1 — runtimes + memory + wiring healthy
+## Step 1 — logic + eval machinery (local, no AWS): the H1 harness on fixtures
 
 ```bash
-aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
-  --query "agentRuntimes[?contains(agentRuntimeName,'alert')].{name:agentRuntimeName,status:status}"
-aws bedrock-agentcore-control list-memories --region "$REGION" \
-  --query "memories[?contains(name,'violation')].{name:name,status:status}"
-aws sns list-subscriptions-by-topic --topic-arn "$TOPIC_ARN" --region "$REGION" \
-  --query 'Subscriptions[].SubscriptionArn'
+python -m pytest agents/ eval/ lambda/ -q     # gate, formatter, idempotency, backoff, bridges, metrics
+python eval/harness.py                          # the H1 report vs the tuned baseline
 ```
-Expected: `alert-analyzer` READY, `alert-publisher` READY; memory `ACTIVE`; the
-subscription ARN is a real ARN (not `"PendingConfirmation"`).
+Expected: all pass. The harness prints a metrics table where the reference triager
+(the offline stand-in for the deployed analyzer, see `eval/reference.py`) strictly
+beats the tuned static baseline on precision and retention — proving the eval
+machinery, the baseline, and label-hiding. The **live** H1 number (Step 3) replaces
+the stand-in with the real agent. On the current fixture set:
+```
+baseline (static rule)        suppress=86%  retain=80%  P=0.80  R=0.80  F1=0.80
+reference (offline stand-in)  suppress=100% retain=100% P=1.00  R=1.00  F1=1.00
+delta  suppress +14%  retain +20%  P +0.20  R +0.20  F1 +0.20
+```
 
-## Step 2 — H1: suppression vs retention vs baseline (AC1 — the lead bet)
-
-Run the eval harness on the labeled set (label hidden from the agent):
-```bash
-python eval/run.py --set eval/data/labeled_breaches.jsonl --baseline tuned --region "$REGION"
-```
-Expected metrics table (illustrative):
-```
-events:                        400   (250 false-positive, 150 genuine)
-false-positive suppression:    86%   (215/250)
-genuine HIGH/CRITICAL retain:  97%   (146/150)
-precision / recall:            0.91 / 0.97
-baseline (tuned static) F1:    0.74
-agent F1:                      0.94   -> beats baseline (+0.20)
-cost per triaged event:        $0.0008   (model: claude-haiku-4-5)
-```
-Pass when false positives are suppressed by a clear majority AND genuine
-high/critical retention is near-total AND the agent beats the baseline. (Exact
-thresholds are OQ-1 / PRD Open Question 2.)
-
-## Step 3 — suppression gate (AC3)
+## Deploy
 
 ```bash
-python eval/invoke_one.py --file eval/data/sample_medium.json   # expect NO_ALERT or severity <= MEDIUM
-python eval/invoke_one.py --file eval/data/sample_high.json     # expect ALERT + HIGH/CRITICAL
-aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --region "$REGION" \
-  --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible
+npx cdk deploy AlertingStack \
+  -c alertEmail=you@example.com \
+  -c analyzerModelId=us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  -c publisherModelId=us.anthropic.claude-haiku-4-5-20251001-v1:0
+# Confirm the SNS subscription email before Step 4.
 ```
-Expected: the medium event enqueues **0** to SQS; the high event enqueues **1**.
+Both `AWS::BedrockAgentCore::Runtime` resources reach `READY`; `AWS::BedrockAgentCore::Memory`
+is `ACTIVE`. AC6 (native IaC) is satisfied by the deploy itself — no CLI/console step.
 
-## Step 4 — four-part, human-readable delivery (AC4)
-
-Inspect the publisher output for the high event (capture via a test SQS
-subscription on the topic, or the publisher runtime return):
-```bash
-... | jq -e '
-  (.Subject | test("^\\[(HIGH|CRITICAL)\\]")) and
-  (.Message | test("CURRENT VEHICLE STATUS") and test("WHY") and test("IMPACT") and test("ACTIONS"))
-' >/dev/null && echo "DELIVERY: PASS" || echo "DELIVERY: FAIL"
-```
-Expected: `DELIVERY: PASS` — severity-tagged subject and the four sections present.
-
-## Step 5 — memory effect on a repeat event (AC2)
+## Step 2 — runtimes and memory are live (AC6)
 
 ```bash
-python eval/invoke_one.py --file eval/data/veh-014_first.json
-python eval/invoke_one.py --file eval/data/veh-014_second.json
+ANALYZER_ARN=$(aws cloudformation describe-stacks --stack-name AlertingStack --region "$REGION" \
+  --query "Stacks[0].Outputs[?OutputKey=='AnalyzerRuntimeArn'].OutputValue" --output text)
+aws bedrock-agentcore-control get-agent-runtime --agent-runtime-arn "$ANALYZER_ARN" --region "$REGION" \
+  --query 'status'
 ```
-Inspect the analyzer runtime's trace/log (CloudWatch GenAI dashboard or its log
-group) for the second invocation. Expected: a `RetrieveMemoryRecords` call
-returns the first event, and the second decision's reasoning references the prior
-history (visible in the trace).
+Expected: `READY` (repeat for `PublisherRuntimeArn`).
 
-## Step 6 — single delivery (AC5)
+## Step 3 — H1: suppression vs retention against the labeled set, vs baseline (AC1, the lead bet)
 
-Send one genuine high breach end to end and count SNS publishes for the window:
+Run the eval harness with the **deployed analyzer** as the triager: a small adapter
+calls `InvokeAgentRuntime` per fixture breach (label withheld) and maps the returned
+decision to `{alert, severity}`. The harness scores it and prints the same table as
+Step 1, now with the real model.
 ```bash
-aws cloudwatch get-metric-statistics --namespace AWS/SNS \
-  --metric-name NumberOfMessagesPublished \
-  --dimensions Name=TopicName,Value=geofence-alerts-topic \
-  --start-time <T-5min> --end-time <now> --period 300 --statistics Sum --region "$REGION"
+python eval/run_live.py --analyzer-arn "$ANALYZER_ARN" --region "$REGION"
 ```
-Expected: `Sum = 1` for the single genuine event (the publisher's `dedupeKey`
-prevents duplicates).
+Expected (measured; thresholds per OQ-1): false-positive suppression and genuine
+high/critical retention reported, and both precision and recall **at or above** the
+tuned baseline row. Record the numbers and the per-event cost.
+
+> `eval/run_live.py` is the thin live adapter (built at the live run): it reuses
+> `eval.harness.run` with an `InvokeAgentRuntime`-backed triager. The offline harness
+> already proves the scoring; the live run only swaps the triager for the real agent.
+
+## Step 4 — gate + four-part delivery (AC3, AC4)
+
+Send one genuine critical breach and one benign breach to `geofence-alerts`; confirm
+exactly the genuine one is delivered, with four sections.
+```bash
+# genuine (depot containment exit, sustained, good fix, door open) -> expect delivery
+aws kinesis put-record --stream-name "$ALERTS" --partition-key veh-001 --region "$REGION" \
+  --data "$(jq -nc '{vehicleId:"veh-001",zoneId:"zone-depot-foothills",zoneName:"Foothills Depot Yard",zoneKind:"containment",breachType:"exit",timestamp:1782458400000,location:{latitude:51.02,longitude:-114.0,accuracy:3},distanceOutsideM:300,durationInStateS:120,vehicle:{speed:50,ignition:true,doorOpen:true}}' | base64)"
+# benign (poor-fix nick) -> expect suppression, no delivery
+aws kinesis put-record --stream-name "$ALERTS" --partition-key veh-005 --region "$REGION" \
+  --data "$(jq -nc '{vehicleId:"veh-005",zoneId:"zone-downtown-restricted",zoneName:"Downtown Restricted Core",zoneKind:"exclusion",breachType:"entry",timestamp:1782458400000,location:{latitude:51.045,longitude:-114.07,accuracy:25},distanceOutsideM:5,durationInStateS:5,vehicle:{speed:40,ignition:true,doorOpen:false}}' | base64)"
+```
+Inspect the delivered email (or the publisher trace). Expected: the `veh-001` alert
+arrives with subject `[CRITICAL] Vehicle veh-001: Foothills Depot Yard exit` and a body
+containing all four sections — `CURRENT STATUS`, `WHY THIS ALERT`, `IMPACT`,
+`RECOMMENDED ACTIONS`. The `veh-005` breach produces **no** delivery (gate suppressed it).
+
+## Step 5 — memory effect on a repeat (AC2)
+
+Send a second breach for `veh-001` at the same zone; in the analyzer trace confirm the
+prior event was retrieved from Memory (`RetrieveMemoryRecords`) and referenced in the
+decision's `historicalPattern` (e.g. "repeat exit"). Expected: the second decision's
+context shows the first event; severity holds or escalates.
+
+## Step 6 — single delivery end to end (AC5)
+
+Re-send the identical `veh-001` genuine breach (same `vehicleId|zoneId|breachType|timestamp`).
+Expected: **still exactly one** delivered alert. The publisher's idempotency claim on the
+dedupe key rejects the duplicate:
+```bash
+aws dynamodb scan --table-name geofence-published-alerts --region "$REGION" \
+  --filter-expression "dedupeKey = :k" \
+  --expression-attribute-values '{":k":{"S":"veh-001|zone-depot-foothills|exit|1782458400000"}}' \
+  --query 'Count'
+```
+Expected: `1` (a single claim). Cross-check with SNS `NumberOfMessagesPublished = 1`
+over the window, and confirm the DLQ depth alarms stayed OK.
+
+## Teardown
+
+```bash
+npx cdk destroy AlertingStack
+```
 
 ## Result block (paste in the handoff)
 
 ```
-ALERTING VERIFY (deploy YYYY-MM-DD, region us-east-1, model claude-haiku-4-5)
-  runtimes:        analyzer READY, publisher READY; memory ACTIVE; sub CONFIRMED
-  H1 suppression:  86% FP suppressed / 97% genuine retained            (AC1)
-  H1 vs baseline:  agent F1 0.94 vs tuned 0.74 (+0.20)                 (AC1)
-  gate:            medium -> 0 enqueued, high -> 1 enqueued            (AC3)
-  delivery:        subject [HIGH], 4 sections present                  (AC4)
-  memory effect:   2nd event used prior history (trace)                (AC2)
-  single delivery: NumberOfMessagesPublished = 1                       (AC5)
-  cost/event:      $0.0008
+ALERTING VERIFY (deploy YYYY-MM-DD, region us-east-1)
+  runtimes/memory:        analyzer READY, publisher READY, memory ACTIVE          (AC6)
+  H1 suppression:         __%   retention __%   P __ R __   vs baseline P __ R __  (AC1)
+  per-event cost:         $__
+  gate:                   genuine delivered, benign suppressed                    (AC3)
+  four-part delivery:     PASS (subject + 4 sections)                             (AC4)
+  memory effect:          prior event referenced on repeat                        (AC2)
+  single delivery:        1 claim for a re-sent breach                            (AC5)
 ```
-Numbers are illustrative of a passing run; the real run records its own. The
-verifier re-runs Steps 2, 3, 4, 6 (and the eval on fixtures in Tier 1) and rejects
-if any bound is missed.
+Numbers are recorded from the real run. The verifier re-runs Step 1 today (incl. the
+eval on fixtures) and Steps 2–6 once deployed, and rejects if any bound is missed or
+if H1 does not beat the baseline.

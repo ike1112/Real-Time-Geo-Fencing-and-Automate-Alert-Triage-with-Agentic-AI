@@ -11,7 +11,15 @@ import sys
 
 _ROOT = os.path.dirname(__file__)
 
-for _relative in ("lambda/rules_bridge", "processor/geofence"):
+for _relative in (
+    "lambda/rules_bridge",
+    "lambda/analyzer_bridge",
+    "lambda/publisher_bridge",
+    "processor/geofence",
+    "agents/analyzer",
+    "agents/publisher",
+    "eval",
+):
     _path = os.path.join(_ROOT, _relative)
     if _path not in sys.path:
         sys.path.insert(0, _path)
