@@ -30,12 +30,14 @@ only maps that logic onto Flink state:
 """
 
 import json
+import time
 
 from pyflink.common import Types
 from pyflink.datastream import StreamExecutionEnvironment, KeyedBroadcastProcessFunction
 from pyflink.datastream.state import MapStateDescriptor, ListStateDescriptor
 
 from detector import evaluate_position, parse_telemetry, PoisonRecord
+import latency
 
 # Stream names; overridable via MSF runtime properties when the CDK Flink app is wired.
 TELEMETRY_STREAM = "vehicle-telemetry"
@@ -63,7 +65,15 @@ class GeofenceBroadcastFunction(KeyedBroadcastProcessFunction):
             ListStateDescriptor("pending-telemetry", Types.STRING())
         )
         # Poison telemetry drop counter, surfaced as a Flink metric.
-        self._dropped = runtime_context.get_metrics_group().counter("poisonTelemetryDropped")
+        metrics = runtime_context.get_metrics_group()
+        self._dropped = metrics.counter("poisonTelemetryDropped")
+        # Layer-2 latency: last-value gauges for the Flink-owned hops, published by
+        # MSF to CloudWatch. The sink updates them; latency.emit_flink_metrics feeds it.
+        latency_group = metrics.add_group("Geofence", "Latency")
+        self._latency = {"StreamWait": 0, "FlinkProcess": 0}
+        for _name in self._latency:
+            latency_group.gauge(_name, (lambda n=_name: int(self._latency[n])))
+        self._latency_sink = lambda name, value: self._latency.__setitem__(name, int(value))
 
     def process_broadcast_element(self, value, ctx):
         change = json.loads(value)
@@ -78,12 +88,20 @@ class GeofenceBroadcastFunction(KeyedBroadcastProcessFunction):
         # bootstrap window is drained lazily by the owning key on its next element.
 
     def _evaluate(self, telemetry, zones):
+        flink_read = int(time.time() * 1000)
         prev_inside = {
             zid: self._inside.get(zid) for zid in zones if self._inside.contains(zid)
         }
         breaches, updated = evaluate_position(telemetry, zones, prev_inside)
         for zone_id, inside in updated.items():
             self._inside.put(zone_id, inside)
+        flink_emit = int(time.time() * 1000)
+        # Stamp the Flink read/emit times into each breach's trace and report the
+        # detection-side hop latencies (stream arrival is added consumer-side by the
+        # probe, so StreamWait is skipped here and FlinkProcess is emitted).
+        for breach in breaches:
+            latency.stamp_flink(breach, flink_read, flink_emit)
+            latency.emit_flink_metrics(self._latency_sink, breach["trace"])
         return breaches
 
     def process_element(self, value, ctx):

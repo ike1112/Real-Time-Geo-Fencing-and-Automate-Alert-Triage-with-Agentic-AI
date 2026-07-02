@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { IngestionStack } from '../lib/ingestion-stack';
 import { ProcessingStack } from '../lib/processing-stack';
 import { AlertingStack } from '../lib/alerting-stack';
+import { ObservabilityStack } from '../lib/observability-stack';
 
 const app = new cdk.App();
 
@@ -20,3 +21,4 @@ new AlertingStack(app, 'AlertingStack', {
   env,
   alertsStream: processing.alertsStream,
 });
+new ObservabilityStack(app, 'ObservabilityStack', { env });

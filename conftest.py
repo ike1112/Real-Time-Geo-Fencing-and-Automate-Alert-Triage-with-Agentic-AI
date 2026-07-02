@@ -19,6 +19,7 @@ for _relative in (
     "agents/analyzer",
     "agents/publisher",
     "eval",
+    "observability",
 ):
     _path = os.path.join(_ROOT, _relative)
     if _path not in sys.path:

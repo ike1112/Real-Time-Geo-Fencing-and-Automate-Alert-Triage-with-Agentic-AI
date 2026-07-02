@@ -43,7 +43,10 @@ export class IngestionStack extends cdk.Stack {
     new iot.CfnTopicRule(this, 'TelemetryToKinesis', {
       ruleName: 'VehicleTelemetryToKinesis',
       topicRulePayload: {
-        sql: "SELECT * FROM 'iot_data'",
+        // `timestamp() AS ingestTime` stamps the broker-ingest epoch onto every
+        // record so downstream can measure the source->ingest hop latency; the
+        // rest of the payload passes through unchanged.
+        sql: "SELECT *, timestamp() AS ingestTime FROM 'iot_data'",
         awsIotSqlVersion: '2016-03-23',
         ruleDisabled: false,
         actions: [

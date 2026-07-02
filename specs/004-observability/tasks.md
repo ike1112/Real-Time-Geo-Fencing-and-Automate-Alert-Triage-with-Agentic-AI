@@ -7,34 +7,43 @@ Each task is small and individually verifiable. Tier-1 (synth + unit) lands firs
 live verification is deferred to an authorized deploy window. No deploy in the
 build pass.
 
-- [ ] T1 — Enrich the IoT topic rule SQL with the ingest stamp:
+- [x] T1 — Enrich the IoT topic rule SQL with the ingest stamp:
   `SELECT *, timestamp() AS ingestTime FROM 'iot_data'` (touches the 001 rule).
   Gives the SourceToIoT delta. Pattern 2. Check: construct test asserts the rule's
   `Sql` includes `timestamp() AS ingestTime`; `cdk synth` clean.
 
-- [ ] T2 — Add the additive optional `trace` block to the 002 breach-event schema
+- [x] T2 — Add the additive optional `trace` block to the 002 breach-event schema
   (`eventTime`, `ingestTime`, `flinkRead`, `flinkEmit`); document the seam so 003
   ignores it. Pattern 2. Check: unit test validates the shape and that the 003
   analyzer-bridge adapter reads no `trace` field.
 
-- [ ] T3 — Flink custom latency metric group: emit StreamWait (t3−t2) and
+- [x] T3 — Flink custom latency metric group: emit StreamWait (t3−t2) and
   FlinkProcess (t4−t3) per record as Flink metrics (MSF publishes to CloudWatch);
   stamp `flinkRead`/`flinkEmit` into the breach event's `trace`. Pattern 2/3. Check:
-  fixture mini-run asserts the metrics are produced and the stamps are present.
+  fixture mini-run asserts the metrics are produced and the stamps are present. Done —
+  pure `latency.py` (stamp_flink + hop_latencies + emit_flink_metrics) tested via the
+  detector mini-run; the Flink adapter registers `Geofence/Latency` gauges and feeds
+  them per record. StreamWait needs t2 (stream arrival), supplied by the source at
+  runtime / the probe on the consumer side; the value-only topology emits FlinkProcess
+  and skips StreamWait until arrival is wired (documented).
 
-- [ ] T4 — `tools/verify/latency-probe.ts` (extends `tools/verify/reader.ts`): read
+- [x] T4 — `tools/verify/latency-probe.ts` (extends `tools/verify/reader.ts`): read
   `geofence-alerts`, compute each hop delta + the cumulative detection/triage totals
   from the `trace` block plus `ApproximateArrivalTimestamp`, print the breakdown
   table, and optionally emit the deltas as EMF under `Geofence/Latency`. Pattern 2/3.
   Check: unit test over a fixture breach set asserts the per-hop and cumulative
   arithmetic; runs offline (no deploy).
 
-- [ ] T5 — EMF for the triage sub-hops in the 003 bridges/runtimes
+- [x] T5 — EMF for the triage sub-hops in the 003 bridges/runtimes
   (analyzerRead → bedrockDone → sqsEnqueue → publisherRead → snsPublish), emitting
   `TriageBedrock` and `NotifyTotal`. Pattern 3. Check: unit test asserts the EMF
-  document shape (namespace, dimensions, metric names).
+  document shape (namespace, dimensions, metric names). Done — pure `observability/emf.py`
+  (document + analyzer_document + publisher_document) tested for the exact EMF shape
+  under `Geofence/Latency`. The document builder is the tested deliverable (matching the
+  Check); the hot-path emit call (a `print(json.dumps(...))` at each stage) is wired at
+  the runtime/bridge deploy points, like the other deploy-only agent wiring.
 
-- [ ] T6 — `ObservabilityStack` (CDK): `CfnDashboard` with one Layer-1 row per hop
+- [x] T6 — `ObservabilityStack` (CDK): `CfnDashboard` with one Layer-1 row per hop
   (H1…H7) and the Layer-2 **stacked** latency widget (detection vs triage tracks);
   `Alarm` constructs for iterator age (H3/H6), `millisBehindLatest`/backpressure,
   `numberOfFailedCheckpoints` + `downtime`, `WriteProvisionedThroughputExceeded`
@@ -43,7 +52,7 @@ build pass.
   dashboard rows, the stacked widget, and each alarm's metric/threshold; `npm test`
   green; `cdk synth` clean.
 
-- [ ] T7 — Author `specs/004-observability/verify.md` (live runbook): drive traffic;
+- [x] T7 — Author `specs/004-observability/verify.md` (live runbook): drive traffic;
   confirm per-hop latency populates on the dashboard and EMF metrics resolve under
   `Geofence/Latency` (AC5); induce consumer lag/backpressure and confirm the alarm
   trips; confirm the detection vs triage tracks separate (L4). Exact commands +
@@ -51,7 +60,9 @@ build pass.
 
 - [ ] T8 — Run verify.md end to end against a dev deploy (deferred; needs an
   authorized deploy). Check: filled result block — dashboard populated, EMF resolved
-  (AC5), an alarm tripped on induced lag, tracks separated.
+  (AC5), an alarm tripped on induced lag, tracks separated. DEFERRED — barred by the
+  standing no-deploy directive (also depends on the 002 Flink live prerequisites). The
+  Tier-1 half (probe math, trace block, EMF shape, dashboard/alarm synth) is green today.
 
 - [ ] T9 — Record deferred follow-ups as STATE.md queue proposals: shard-level
   enhanced metrics + per-shard utilization when per-vehicle load is uneven (SC1);

@@ -103,6 +103,14 @@ def _breach_event(telemetry, zone, edge, inside):
         # duration (re-emit / enrich) is a deferred enhancement.
         "durationInStateS": 0,
         "vehicle": _vehicle_passthrough(telemetry),
+        # Additive latency-trace block: the producer + ingest stamps carried in-band.
+        # The Flink adapter fills flinkRead/flinkEmit (see latency.stamp_flink); 003
+        # ignores this block entirely. Absent stamps stay None so a hop with a missing
+        # endpoint is simply not measured.
+        "trace": {
+            "eventTime": telemetry.get("timestamp"),
+            "ingestTime": telemetry.get("ingestTime"),
+        },
     }
 
 

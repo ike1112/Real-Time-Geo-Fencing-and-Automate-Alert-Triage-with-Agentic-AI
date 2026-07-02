@@ -15,11 +15,12 @@ describe('IngestionStack', () => {
     });
   });
 
-  test('exactly one IoT topic rule routes iot_data, keyed by vehicleId', () => {
+  test('exactly one IoT topic rule routes iot_data, keyed by vehicleId, stamping ingestTime', () => {
     template.resourceCountIs('AWS::IoT::TopicRule', 1);
     template.hasResourceProperties('AWS::IoT::TopicRule', {
       TopicRulePayload: Match.objectLike({
-        Sql: "SELECT * FROM 'iot_data'",
+        // ingestTime stamp added for the source->ingest latency hop (004).
+        Sql: "SELECT *, timestamp() AS ingestTime FROM 'iot_data'",
         Actions: [
           Match.objectLike({
             Kinesis: Match.objectLike({ PartitionKey: '${vehicleId}' }),
