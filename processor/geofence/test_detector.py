@@ -4,6 +4,8 @@ Proves AC1 (one correctly-typed breach per violating crossing) and AC4 (no false
 breaches from staying put or from a non-violating crossing).
 """
 
+import json
+
 from detector import Detector
 
 # Two square zones (closed rings of [lat, lon]).
@@ -109,3 +111,38 @@ def test_deactivating_a_zone_stops_breaches():
     d.apply_rule_change({"op": "MODIFY", "id": "zone-excl", "active": False})
     d.process(_ping("veh-6", 5, 5))                        # leave
     assert d.process(_ping("veh-6", 1, 1)) == []           # re-enter, but zone is gone
+
+
+# --- Bootstrap gate (T13): telemetry before the first rule is held, not lost. ---
+
+def test_bootstrap_holds_telemetry_then_replays_the_missed_crossing():
+    # Same crossing, before vs after the rule loads. Held while no zone is known,
+    # then replayed the instant the zone activates so the entry is NOT missed.
+    d = Detector()
+    assert d.process(_ping("veh-7", 5, 5)) == []           # outside, held (no rules yet)
+    assert d.process(_ping("veh-7", 1, 1)) == []           # crosses IN, but still held
+    breaches = d.apply_rule_change(EXCLUSION)              # first zone -> replay held
+    assert [b["breachType"] for b in breaches] == ["entry"]
+    assert breaches[0]["vehicleId"] == "veh-7"
+
+
+def test_bootstrap_does_not_invent_a_breach_for_a_vehicle_that_stayed_outside():
+    d = Detector()
+    d.process(_ping("veh-8", 5, 5))                        # outside, held
+    d.process(_ping("veh-8", 6, 6))                        # still outside, held
+    assert d.apply_rule_change(EXCLUSION) == []            # replay: no crossing, no breach
+
+
+# --- Poison telemetry (T14): drop and count, never stall. ---
+
+def test_poison_telemetry_is_dropped_counted_and_does_not_stall():
+    d = _detector(EXCLUSION)
+    assert d.process_raw("{not valid json") == []          # undecodable -> dropped
+    assert d.process_raw(json.dumps({"location": {"latitude": 1, "longitude": 1}})) == []  # no vehicleId
+    assert d.process_raw(json.dumps({"vehicleId": "veh-9"})) == []  # no location
+    assert d.dropped == 3
+    # The shard keeps going: a good record after the poison ones still breaches.
+    d.process_raw(json.dumps(_ping("veh-9", 5, 5)))
+    breaches = d.process_raw(json.dumps(_ping("veh-9", 1, 1)))
+    assert len(breaches) == 1 and breaches[0]["breachType"] == "entry"
+    assert d.dropped == 3                                   # a valid record is not counted

@@ -14,8 +14,45 @@ the vehicle diagnostics passthrough. It assigns no severity or reason; that is t
 triage layer's job.
 """
 
+import json
+from collections import deque
+
 from geometry import point_in_polygon, distance_to_boundary_m
 from edges import detect_edge, ENTRY, EXIT
+
+# Cap on telemetry held during the bootstrap window (before the first rule loads).
+# The window is sub-second in practice (rules replay from the stream's start ahead
+# of telemetry), so this only bounds memory in a pathological rules-never-arrive
+# case; the oldest held positions are dropped once it fills.
+BOOTSTRAP_HOLD_CAP = 1000
+
+
+class PoisonRecord(Exception):
+    """A telemetry record that cannot be turned into an evaluable position."""
+
+
+def parse_telemetry(raw):
+    """Deserialize and minimally validate one telemetry record.
+
+    Accepts a JSON string (as it arrives off the stream) or an already-parsed dict.
+    Raises ``PoisonRecord`` for anything the detector cannot evaluate — the caller
+    drops and counts it rather than stalling the shard.
+    """
+    if isinstance(raw, (str, bytes, bytearray)):
+        try:
+            record = json.loads(raw)
+        except (ValueError, TypeError) as exc:
+            raise PoisonRecord(f"undecodable telemetry: {exc}")
+    else:
+        record = raw
+    if not isinstance(record, dict):
+        raise PoisonRecord("telemetry is not a JSON object")
+    if not record.get("vehicleId"):
+        raise PoisonRecord("telemetry missing vehicleId")
+    location = record.get("location")
+    if not isinstance(location, dict) or location.get("latitude") is None or location.get("longitude") is None:
+        raise PoisonRecord("telemetry missing location latitude/longitude")
+    return record
 
 
 def _is_breach(kind, edge):
@@ -102,23 +139,66 @@ class Detector:
     def __init__(self):
         self.zones = {}
         self._vehicle_inside = {}  # vehicle_id -> {zone_id: inside}
+        # Bootstrap gate: telemetry seen before the first active zone loads is held,
+        # not evaluated, so a vehicle's in/out baseline is never established from
+        # pre-rule positions (which would miss the first real crossing). The held
+        # telemetry is replayed the moment the first zone activates.
+        self._bootstrapped = False
+        self._held = deque(maxlen=BOOTSTRAP_HOLD_CAP)
+        self.dropped = 0  # count of poison telemetry records dropped
 
     def apply_rule_change(self, change):
-        """Add/replace or drop a zone from the active set."""
+        """Add/replace or drop a zone from the active set.
+
+        Returns the breach events produced by replaying any telemetry held during
+        the bootstrap window, which is non-empty only on the rule change that first
+        activates a zone; an empty list otherwise.
+        """
         zone_id = change["id"]
         if change.get("op") == "REMOVE" or not change.get("active", False):
             self.zones.pop(zone_id, None)
-            return
-        self.zones[zone_id] = {
-            "id": zone_id,
-            "name": change.get("name") or zone_id,
-            "kind": change.get("kind"),
-            "polygon": change.get("polygon"),
-            "properties": change.get("properties", {}),
-        }
+        else:
+            self.zones[zone_id] = {
+                "id": zone_id,
+                "name": change.get("name") or zone_id,
+                "kind": change.get("kind"),
+                "polygon": change.get("polygon"),
+                "properties": change.get("properties", {}),
+            }
+        if not self._bootstrapped and self.zones:
+            return self._flush_held()
+        return []
+
+    def _flush_held(self):
+        """Mark bootstrapped and replay held telemetry in arrival order."""
+        self._bootstrapped = True
+        held, self._held = list(self._held), deque(maxlen=BOOTSTRAP_HOLD_CAP)
+        breaches = []
+        for telemetry in held:
+            breaches.extend(self._evaluate(telemetry))
+        return breaches
+
+    def process_raw(self, raw):
+        """Parse a raw telemetry record then process it; drop+count poison records."""
+        try:
+            telemetry = parse_telemetry(raw)
+        except PoisonRecord:
+            self.dropped += 1
+            return []
+        return self.process(telemetry)
 
     def process(self, telemetry):
-        """Return the breach events (if any) for one telemetry position."""
+        """Return the breach events (if any) for one telemetry position.
+
+        Before the first zone loads, hold the position instead of evaluating it (see
+        the bootstrap gate above) and return no breaches.
+        """
+        if not self._bootstrapped:
+            self._held.append(telemetry)
+            return []
+        return self._evaluate(telemetry)
+
+    def _evaluate(self, telemetry):
         vehicle_id = telemetry["vehicleId"]
         prev = self._vehicle_inside.get(vehicle_id, {})
         breaches, updated = evaluate_position(telemetry, self.zones, prev)

@@ -117,20 +117,31 @@ scope, chosen over operational-minimum). Each cites the finding and a reference.
   Check: construct test asserts `CheckpointConfiguration` enabled + snapshots enabled
   on the `AWS::KinesisAnalyticsV2::Application`.
 
-- [ ] T13 **[correctness]** — Broadcast-state bootstrap as a tested acceptance criterion (extends T5).
+- [x] T13 **[correctness]** — Broadcast-state bootstrap as a tested acceptance criterion (extends T5).
   The job must not evaluate telemetry before the initial rule set is loaded (else early
   breaches are missed); replay `geofence-rules` from an early position and/or hold
   telemetry until first rule load. Handles finding **R2** (bootstrap race) + design
   risk already flagged. Check: the fixture mini-run asserts a telemetry event arriving
   before any rule produces **no** breach, and the same event after the rule load
-  produces the expected breach.
+  produces the expected breach. Done — `Detector` holds pre-rule telemetry in a bounded
+  buffer and replays it in arrival order the instant the first zone activates, so a
+  vehicle's in/out baseline is never taken from pre-rule positions and the first
+  crossing is not missed; paired fixture test asserts held→no-breach then
+  replay→entry-breach, plus a stayed-outside case that invents no breach. Mirrored in
+  the Flink adapter as keyed-state hold-and-drain (primary mitigation stays the source
+  TRIM_HORIZON start on `geofence-rules`).
 
-- [ ] T14 **[breadth]** — Poison-telemetry handling in the Flink source (extends T5). A
+- [x] T14 **[breadth]** — Poison-telemetry handling in the Flink source (extends T5). A
   non-deserializable telemetry record must be dropped and counted (a metric), not stall
   the shard. Handles finding **R1** (stream-side). Note: the controlled simulator can't
   emit malformed records today, so this guards a case that can't occur at pilot — kept
   as a deliberate resilience demonstration, not an operational need. Check: fixture
-  mini-run feeds a malformed record and asserts the job continues + increments the drop counter.
+  mini-run feeds a malformed record and asserts the job continues + increments the drop
+  counter. Done — `parse_telemetry` raises `PoisonRecord` for undecodable JSON / missing
+  vehicleId / missing location; `Detector.process_raw` drops+counts (`dropped`) and keeps
+  processing; test feeds three poison shapes then a good crossing and asserts the breach
+  still fires with the counter unchanged. Flink adapter increments a `poisonTelemetryDropped`
+  metric on the same boundary.
 
 ## Traceability (task -> what it satisfies)
 
