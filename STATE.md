@@ -32,22 +32,35 @@ approving a spec produced by the architect stage.
   status: done — T1-T8 complete, each checker-approved; AC1/AC3/AC5 verified (T6 live: 90 records, max 0.97s, 0 out-of-order); AC2 soak + AC4 removalPolicy deferred (see Watch List)
   rejections: 1
 
-- [ ] Implement increment 002 — geofence processing
+- [x] Implement increment 002 — geofence processing
   spec: specs/002-processing
   approved: 2026-06-30
-  status: in-progress (Tier-1 only, no deploy per standing directive). Done, each
-    independently checker-APPROVED: T1 stateful resources; T3 rules bridge
-    (DDB-Streams->Lambda->geofence-rules, 773d263); T11 partial-batch+bisect+DLQ on the
-    bridge (b22c634); T4 point-in-polygon + edge lib (6e48235); T5 PyFlink job — pure
-    detector core + thin Flink adapter (246357c); T6 Managed Flink app in CDK + T12
-    checkpointing/snapshots (8b6f8ca); T2 zone seed — deploy-time AwsCustomResource from
-    the simulator's canonical zones (d37d151); T7 comprehensive construct-test sweep with a
-    no-wildcard least-privilege guard (c5e09ae); T8 verify.md runbook reconciled with the
-    built implementation + honest live-run prerequisites (6b5fa1e). Python suite runs from
-    root (importlib pytest.ini + conftest). Remaining: T14 Flink poison handling [breadth],
-    T9 live run (deferred — needs deploy AND the job's main() connector wiring + connector
-    jar, per verify.md), T10 follow-ups. Tier-1 green: jest 26, pytest 34, build, synth.
+  status: DONE (Tier-1, no deploy per standing directive). All buildable tasks complete;
+    T13 broadcast-state bootstrap hold-and-replay + T14 poison-telemetry drop/count added
+    (10d05c8), each with pure-core tests + Flink-adapter mirrors. Only T9 (live run)
+    remains, deferred — needs deploy AND the job's main() connector wiring + jar, per
+    verify.md. Tier-1 green.
   rejections: 1 (T5: a task label in a comment; fixed + re-approved)
+
+- [x] Implement increment 003 — agentic alert triage & delivery
+  spec: specs/003-agentic-alerting
+  approved: 2026-07-02 (user directive "finish all parts")
+  status: DONE buildable scope (Tier-1, no deploy). AlertingStack + two AgentCore
+    runtimes (native IaC), per-vehicle memory, suppression gate, idempotent single
+    delivery, two bridges, eval harness with tuned baseline (8587aa4). Pure decision
+    cores unit-tested; Strands/AgentCore app.py + Dockerfiles synth/deploy-only.
+    Remaining: T11 live run (deferred — ARM64 Docker build + Bedrock access + email),
+    T12 follow-ups (recorded below). Tier-1 green.
+  rejections: 0
+
+- [x] Implement increment 004 — pipeline observability & latency accumulation
+  spec: specs/004-observability
+  approved: 2026-07-02 (user directive "finish all parts")
+  status: DONE buildable scope (Tier-1, no deploy). IoT ingestTime stamp, additive
+    breach `trace` block + Flink latency gauges, offline latency probe, triage EMF
+    docs, ObservabilityStack (CfnDashboard + alarm fleet) (dc3cafb). Remaining: T8 live
+    run (deferred), T9 follow-ups (recorded below). Tier-1 green.
+  rejections: 0
 
 ## High Priority
 
@@ -90,8 +103,19 @@ Deferred follow-ups (proposals, not yet approved into the queue):
   - Still documentation-only (not yet tasked): SC1 per-vehicle one-shard bound note in
     001/design.md; SC3 broadcast ceiling; single-region/no-DR explicit non-goal;
     L4 split detection-vs-triage SLOs in 003/spec.md.
-- None of 002 T11–14, 003 T13–16, or 004 built/deployed yet — all DRAFT awaiting the
-  same loop gate; each is Tier-1 verifiable before any deploy.
+- Deferred follow-ups recorded from the completed increments (002 T10, 003 T12, 004 T9):
+  - 002: dwell debounce at the boundary under GPS jitter (OQ-1); bounded bootstrap-hold
+    replay is in place, revisit the cap if a real deploy shows a longer bootstrap window.
+  - 003: on-call routing / escalation policy; dedup hardening beyond the dedupeKey claim;
+    H1 threshold tuning once OQ-1 fixes the pass/fail numbers; the analyzer/publisher
+    app.py + Dockerfiles are synth/deploy-only (exercised at the live run).
+  - 004: shard-level enhanced metrics + per-shard utilization at scale (SC1, on-demand
+    defers it); ADOT/X-Ray causal spans if trace trees are later needed; wire the EMF
+    hot-path emit at the runtime/bridge deploy points; supply Kinesis stream-arrival to
+    the Flink StreamWait metric (source metadata) at the live run.
+- All four increments' buildable (Tier-1) scope is complete and committed. The only
+  open work is the deploy-gated live runs (002 T9, 003 T11, 004 T8), barred by the
+  standing no-deploy directive.
 - Over-engineering audit (2026-06-30): user asked to right-size the new tasks; chose
   **portfolio-grade** scope for the production observability/resilience layer (full
   CloudWatch dashboard + alarm fleet + DLQs kept deliberately as a competence showcase,
@@ -108,12 +132,15 @@ Deferred follow-ups (proposals, not yet approved into the queue):
 
 ## Latest Run
 
-- Run ID: none yet
-- Date: none yet
-- Summary: no run recorded yet
-- Health: unknown
-- Escalations: none yet
-- Next Action: implement specs/001-ingestion T1 (vehicle-telemetry on-demand stream)
+- Run ID: finish-all-parts
+- Date: 2026-07-02
+- Summary: completed the buildable scope of all remaining increments — 002 T13/T14,
+  the full 003 agentic-alerting increment, and the full 004 observability increment.
+  Tier-1 green across the app: build, jest 52, pytest 91, cdk synth (4 stacks).
+- Health: green (Tier-1); live/deploy verification deferred by the no-deploy directive.
+- Escalations: none
+- Next Action: human verification + merge of the three increment commits; then the
+  deploy-gated live runs (002 T9, 003 T11, 004 T8) when a deploy window is authorized.
 
 ## Run History
 
