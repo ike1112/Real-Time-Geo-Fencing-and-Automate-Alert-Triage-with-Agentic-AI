@@ -64,10 +64,11 @@ build pass.
   standing no-deploy directive (also depends on the 002 Flink live prerequisites). The
   Tier-1 half (probe math, trace block, EMF shape, dashboard/alarm synth) is green today.
 
-- [ ] T9 — Record deferred follow-ups as STATE.md queue proposals: shard-level
+- [x] T9 — Record deferred follow-ups as STATE.md queue proposals: shard-level
   enhanced metrics + per-shard utilization when per-vehicle load is uneven (SC1);
   ADOT/X-Ray causal spans if trace trees are later needed. Check: captured, scope
-  minimal.
+  minimal. Done — recorded in STATE.md Watch List (SC1 shard-level metrics at scale;
+  ADOT/X-Ray spans; EMF hot-path emit wiring; Flink StreamWait stream-arrival wiring).
 
 ## Traceability (task → what it satisfies)
 

@@ -78,8 +78,10 @@ grades each Check before the next.
   present; else human). Check: filled result block pasted in the handoff — breach
   correctness (AC1), 60 s rule latency (AC2), no false breaches (AC4) — all met.
 
-- [ ] T10 — Record deferred follow-ups (dwell debounce per OQ-1; broadcast
+- [x] T10 — Record deferred follow-ups (dwell debounce per OQ-1; broadcast
   bootstrap hardening) as STATE.md queue proposals. Check: captured, scope minimal.
+  Done — recorded in STATE.md Watch List (dwell debounce; revisit the bounded
+  bootstrap-hold cap if a live deploy shows a longer bootstrap window).
 
 ## Resilience hardening (streaming data characteristics)
 

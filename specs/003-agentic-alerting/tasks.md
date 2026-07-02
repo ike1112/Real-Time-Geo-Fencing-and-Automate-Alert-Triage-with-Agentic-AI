@@ -64,8 +64,10 @@ grades each Check before the next.
   offline half (eval-on-fixtures, gate, formatter, idempotency, backoff, bridges) is
   green today; the live half is scripted in verify.md.
 
-- [ ] T12 — Record deferred follow-ups (on-call routing, dedup hardening,
+- [x] T12 — Record deferred follow-ups (on-call routing, dedup hardening,
   threshold tuning from OQ-1) as STATE.md queue proposals. Check: captured.
+  Done — recorded in STATE.md Watch List (on-call routing; dedup hardening beyond
+  the dedupeKey claim; H1 threshold tuning once OQ-1 sets pass/fail numbers).
 
 ## Resilience hardening (streaming data characteristics)
 
