@@ -40,26 +40,39 @@ _agent = Agent(model=BedrockModel(model_id=MODEL_ID), system_prompt=triage.SYSTE
 
 
 def _retrieve_history(vehicle_id):
-    """Prior violation records for this vehicle from semantic Memory (best-effort)."""
+    """Prior violation records for this vehicle from semantic Memory (best-effort).
+
+    Memory is a signal, never a hard dependency — a retrieval failure must not block
+    triage, so any error degrades to "no history".
+    """
     if not _memory:
         return []
-    namespace = VIOLATIONS_NAMESPACE.format(actorId=vehicle_id)
-    records = _memory.retrieve_memory_records(
-        memory_id=MEMORY_ID, namespace=namespace, search_query="prior geofence breach", max_results=5
-    )
-    return records or []
+    try:
+        namespace = VIOLATIONS_NAMESPACE.format(actorId=vehicle_id)
+        result = _memory.retrieve_memories(
+            memory_id=MEMORY_ID, namespace=namespace,
+            query="prior geofence breach", top_k=5,
+        )
+        return result or []
+    except Exception:  # noqa: BLE001 - memory is best-effort; triage proceeds without it
+        return []
 
 
 def _remember(vehicle_id, breach, decision):
+    """Write the event back to Memory (best-effort; never blocks the decision)."""
     if not _memory:
         return
-    _memory.create_memory_record(
-        memory_id=MEMORY_ID,
-        namespace=VIOLATIONS_NAMESPACE.format(actorId=vehicle_id),
-        content=json.dumps({"breach": breach, "decision": {
-            "severity": decision["severity"], "reason": decision["reason"],
-            "eventTime": decision["eventTime"]}}),
-    )
+    try:
+        _memory.create_event(
+            memory_id=MEMORY_ID,
+            actor_id=vehicle_id,
+            session_id=vehicle_id,
+            messages=[(json.dumps({"breach": breach, "decision": {
+                "severity": decision["severity"], "reason": decision["reason"],
+                "eventTime": decision["eventTime"]}}), "ASSISTANT")],
+        )
+    except Exception:  # noqa: BLE001 - best-effort persistence
+        pass
 
 
 @app.entrypoint
