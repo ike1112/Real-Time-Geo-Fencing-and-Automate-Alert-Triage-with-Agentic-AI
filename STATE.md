@@ -2,7 +2,7 @@
 
 Durable memory for loop runs in this repository.
 
-Last run: none yet
+Last run: 2026-07-03 10:02:25
 
 ## Operating Mode
 
@@ -132,19 +132,20 @@ Deferred follow-ups (proposals, not yet approved into the queue):
 
 ## Latest Run
 
-- Run ID: finish-all-parts
-- Date: 2026-07-02
-- Summary: completed the buildable scope of all remaining increments — 002 T13/T14,
+- Run ID: triage-20260703-100225-963
+- Date: 2026-07-03 10:02:25
+- Summary: Triage loop completed. See .loop/triage/triage-20260703-100225-963.md
   the full 003 agentic-alerting increment, and the full 004 observability increment.
   Tier-1 green across the app: build, jest 52, pytest 91, cdk synth (4 stacks).
-- Health: green (Tier-1); live/deploy verification deferred by the no-deploy directive.
+- Health: green
 - Escalations: none
-- Next Action: human verification + merge of the three increment commits; then the
+- Next Action: Resume active plan: specs/004-observability -> T8 — Run verify.md end to end against a dev deploy (deferred; needs an
   deploy-gated live runs (002 T9, 003 T11, 004 T8) when a deploy window is authorized.
 
 ## Run History
 
 - Initialize with the first triage report.
 
+- 2026-07-03 10:02:25: triage-20260703-100225-963 completed, report at .loop/triage/triage-20260703-100225-963.md
 ---
-Run log: none yet
+Run log: 2026-07-03 10:02:25 | health green | 0 findings | 0 actions | 0 escalations
