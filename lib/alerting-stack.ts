@@ -126,6 +126,10 @@ export class AlertingStack extends cdk.Stack {
         'logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams',
         'xray:PutTraceSegments', 'xray:PutTelemetryRecords', 'xray:GetSamplingRules', 'xray:GetSamplingTargets',
         'cloudwatch:PutMetricData',
+        // Bedrock validates the model's Marketplace subscription on invoke; without
+        // these the model call fails AccessDenied. Model access must ALSO be enabled
+        // for the account in the Bedrock console (Model access -> Anthropic).
+        'aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe',
       ],
       resources: ['*'],
     });
