@@ -8,6 +8,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { DynamoEventSource, SqsDlq } from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kinesisanalyticsv2 from 'aws-cdk-lib/aws-kinesisanalyticsv2';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { buildZoneItems, toDynamoItem } from '../tools/seed-zones';
@@ -146,7 +147,7 @@ export class ProcessingStack extends cdk.Stack {
     this.alertsStream.grantWrite(processorRole);
     processorCode.grantRead(processorRole);
 
-    new kinesisanalyticsv2.CfnApplication(this, 'GeofenceProcessor', {
+    const flinkApp = new kinesisanalyticsv2.CfnApplication(this, 'GeofenceProcessor', {
       applicationName: 'geofence-processor',
       runtimeEnvironment: 'FLINK-1_20',
       serviceExecutionRole: processorRole.roleArn,
@@ -206,6 +207,37 @@ export class ProcessingStack extends cdk.Stack {
         applicationSnapshotConfiguration: {
           snapshotsEnabled: true,
         },
+      },
+    });
+
+    // Managed Flink validates it can read the code zip with the execution role at
+    // create time, so the app must be created only AFTER the role's S3-read policy is
+    // attached. The roleArn reference alone does not order against the role's inline
+    // policy, so make the dependency explicit to avoid an asset-read race on deploy.
+    flinkApp.node.addDependency(processorRole);
+
+    // Deliver the Flink job's logs to CloudWatch so startup/runtime errors are
+    // visible (without this the app fails silently back to READY). The service role
+    // writes the log events.
+    const processorLogGroup = new logs.LogGroup(this, 'ProcessorLogs', {
+      logGroupName: '/aws/kinesis-analytics/geofence-processor',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    const processorLogStream = new logs.LogStream(this, 'ProcessorLogStream', {
+      logGroup: processorLogGroup,
+      logStreamName: 'flink-job',
+    });
+    processorLogGroup.grantWrite(processorRole);
+    new kinesisanalyticsv2.CfnApplicationCloudWatchLoggingOption(this, 'ProcessorLogging', {
+      applicationName: flinkApp.ref,
+      cloudWatchLoggingOption: {
+        logStreamArn: this.formatArn({
+          service: 'logs',
+          resource: 'log-group',
+          resourceName: `${processorLogGroup.logGroupName}:log-stream:${processorLogStream.logStreamName}`,
+          arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+        }),
       },
     });
 

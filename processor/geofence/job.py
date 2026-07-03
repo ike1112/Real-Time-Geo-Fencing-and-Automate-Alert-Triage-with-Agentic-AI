@@ -30,6 +30,7 @@ only maps that logic onto Flink state:
 """
 
 import json
+import os
 import time
 
 from pyflink.common import Types
@@ -64,16 +65,10 @@ class GeofenceBroadcastFunction(KeyedBroadcastProcessFunction):
         self._pending = runtime_context.get_list_state(
             ListStateDescriptor("pending-telemetry", Types.STRING())
         )
-        # Poison telemetry drop counter, surfaced as a Flink metric.
-        metrics = runtime_context.get_metrics_group()
-        self._dropped = metrics.counter("poisonTelemetryDropped")
-        # Layer-2 latency: last-value gauges for the Flink-owned hops, published by
-        # MSF to CloudWatch. The sink updates them; latency.emit_flink_metrics feeds it.
-        latency_group = metrics.add_group("Geofence", "Latency")
-        self._latency = {"StreamWait": 0, "FlinkProcess": 0}
-        for _name in self._latency:
-            latency_group.gauge(_name, (lambda n=_name: int(self._latency[n])))
-        self._latency_sink = lambda name, value: self._latency.__setitem__(name, int(value))
+        # Poison telemetry drop counter (PyFlink supports counters over the process
+        # boundary; callback gauges are not supported, so the Layer-2 latency numbers
+        # are emitted by the offline probe / EMF path rather than a Flink gauge here).
+        self._dropped = runtime_context.get_metrics_group().counter("poisonTelemetryDropped")
 
     def process_broadcast_element(self, value, ctx):
         change = json.loads(value)
@@ -96,12 +91,10 @@ class GeofenceBroadcastFunction(KeyedBroadcastProcessFunction):
         for zone_id, inside in updated.items():
             self._inside.put(zone_id, inside)
         flink_emit = int(time.time() * 1000)
-        # Stamp the Flink read/emit times into each breach's trace and report the
-        # detection-side hop latencies (stream arrival is added consumer-side by the
-        # probe, so StreamWait is skipped here and FlinkProcess is emitted).
+        # Stamp the Flink read/emit times into each breach's trace; the per-hop
+        # latency deltas are computed downstream by the offline probe.
         for breach in breaches:
             latency.stamp_flink(breach, flink_read, flink_emit)
-            latency.emit_flink_metrics(self._latency_sink, breach["trace"])
         return breaches
 
     def process_element(self, value, ctx):
@@ -151,19 +144,74 @@ def build_pipeline(telemetry_stream, rules_stream):
     )
 
 
+# Managed Service for Apache Flink exposes the CDK-supplied property groups here.
+APPLICATION_PROPERTIES_FILE_PATH = "/etc/flink/application_properties.json"
+
+
+def _application_properties():
+    if os.path.isfile(APPLICATION_PROPERTIES_FILE_PATH):
+        with open(APPLICATION_PROPERTIES_FILE_PATH, "r") as handle:
+            return json.load(handle)
+    return []
+
+
+def _property_group(properties, group_id):
+    for group in properties:
+        if group.get("PropertyGroupId") == group_id:
+            return group.get("PropertyMap", {})
+    return {}
+
+
 def main():
-    env = StreamExecutionEnvironment.get_execution_environment()
-    # The Kinesis source/sink construction (connector classes + runtime properties:
-    # stream names above, region, starting position) is provided by the CDK Flink
-    # application and validated in the live run. The topology it feeds is build_pipeline:
-    #
-    #   telemetry = <KinesisSource(TELEMETRY_STREAM)>
-    #   rules     = <KinesisSource(RULES_STREAM)>
-    #   build_pipeline(telemetry, rules).sink_to(<KinesisSink(ALERTS_STREAM)>)
-    #   env.execute("geofence-breach-detection")
-    raise NotImplementedError(
-        "Kinesis connector wiring is supplied by the CDK Flink application (next task)."
+    """Wire the Kinesis sources/sink around build_pipeline and run the job.
+
+    Stream names + region come from the CDK-supplied `geofence.streams` property
+    group. Telemetry starts at LATEST; the rules stream starts at TRIM_HORIZON so
+    the broadcast zone set is loaded from the beginning before telemetry is judged
+    (the bootstrap gate then holds any early telemetry until the first rule lands).
+    """
+    from pyflink.datastream.connectors.kinesis import (
+        FlinkKinesisConsumer,
+        KinesisStreamsSink,
+        PartitionKeyGenerator,
     )
+    from pyflink.common.serialization import SimpleStringSchema
+
+    env = StreamExecutionEnvironment.get_execution_environment()
+
+    streams = _property_group(_application_properties(), "geofence.streams")
+    region = streams.get("region", "us-east-1")
+    telemetry_name = streams.get("telemetryStream", TELEMETRY_STREAM)
+    rules_name = streams.get("rulesStream", RULES_STREAM)
+    alerts_name = streams.get("alertsStream", ALERTS_STREAM)
+
+    telemetry = env.add_source(
+        FlinkKinesisConsumer(
+            telemetry_name,
+            SimpleStringSchema(),
+            {"aws.region": region, "flink.stream.initpos": "LATEST"},
+        )
+    )
+    rules = env.add_source(
+        FlinkKinesisConsumer(
+            rules_name,
+            SimpleStringSchema(),
+            {"aws.region": region, "flink.stream.initpos": "TRIM_HORIZON"},
+        )
+    )
+
+    # New (FLIP-171) async sink — FlinkKinesisProducer was removed in this connector.
+    sink = (
+        KinesisStreamsSink.builder()
+        .set_kinesis_client_properties({"aws.region": region})
+        .set_stream_name(alerts_name)
+        .set_serialization_schema(SimpleStringSchema())
+        .set_partition_key_generator(PartitionKeyGenerator.random())
+        .build()
+    )
+
+    build_pipeline(telemetry, rules).sink_to(sink)
+    env.execute("geofence-breach-detection")
 
 
 if __name__ == "__main__":

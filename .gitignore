@@ -19,3 +19,4 @@ __pycache__/
 # never published. The committed product artifacts stand on their own.
 docs/*.pdf
 docs/*.png
+processor/lib/*.jar
