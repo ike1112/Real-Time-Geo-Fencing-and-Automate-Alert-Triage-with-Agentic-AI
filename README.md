@@ -93,7 +93,16 @@ beats the baseline (`P/R 0.80 → 1.00`, delta `+0.20`).
 
 ## Deploy (end to end)
 
-Deploy the stacks in dependency order. `AlertingStack` takes context parameters:
+> **For a full, battle-tested deploy + testing + teardown walkthrough, see
+> [`DEPLOYMENT.md`](DEPLOYMENT.md)** — it captures every fix and gotcha from a real
+> dev-account deploy (connector-jar fetch, Bedrock model-access enablement, ordering
+> races, teardown quirks) plus `docs/live-deploy-findings.md`. The summary below is the
+> quick version.
+
+Two prerequisites a fresh clone needs before the commands below: `npm run fetch:connector`
+(downloads the git-ignored Flink jar) and enabling **Bedrock model access** for the account
+(see DEPLOYMENT.md §2). Then deploy the stacks in dependency order — `AlertingStack` takes
+context parameters:
 
 ```bash
 npx cdk bootstrap                                   # once per account/region
