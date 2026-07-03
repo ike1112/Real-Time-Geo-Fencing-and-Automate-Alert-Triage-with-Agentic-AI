@@ -75,16 +75,36 @@ def _remember(vehicle_id, breach, decision):
         pass
 
 
+def _result_text(result):
+    """Extract the model's text from a Strands AgentResult (fall back to str())."""
+    message = getattr(result, "message", None)
+    if isinstance(message, dict):
+        parts = message.get("content") or []
+        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+        if text:
+            return text
+    return str(result)
+
+
 @app.entrypoint
 def invoke(payload):
     """Triage one breach event; forward only HIGH/CRITICAL to the delivery queue."""
+    try:
+        return _invoke(payload)
+    except Exception:  # noqa: BLE001 - surface the real cause in the runtime logs
+        import traceback
+        print("ANALYZER_ERROR:\n" + traceback.format_exc(), flush=True)
+        raise
+
+
+def _invoke(payload):
     breach = payload if isinstance(payload, dict) else json.loads(payload)
     vehicle_id = breach.get("vehicleId", "unknown")
 
     history = _retrieve_history(vehicle_id)
     user_message = triage.build_user_message(breach, history)
     result = call_with_retry(lambda: _agent(user_message))
-    decision = triage.parse_decision(str(result), breach)
+    decision = triage.parse_decision(_result_text(result), breach)
 
     _remember(vehicle_id, breach, decision)
 

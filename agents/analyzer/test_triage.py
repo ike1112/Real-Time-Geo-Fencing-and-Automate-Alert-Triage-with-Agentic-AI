@@ -79,6 +79,12 @@ def test_parse_rejects_unusable_output(bad):
         parse_decision(bad, _breach())
 
 
+def test_parse_recovers_json_wrapped_in_prose_or_a_fence():
+    wrapped = 'Here is my decision:\n```json\n{"severity": "high", "reason": "sustained exit"}\n```\nDone.'
+    d = parse_decision(wrapped, _breach())
+    assert d["severity"] == HIGH and should_deliver(d) is True
+
+
 # --- Dedupe + delivery payload. ---
 
 def test_dedupe_key_is_stable_and_specific():

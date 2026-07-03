@@ -92,6 +92,26 @@ class InvalidDecision(Exception):
     """The model output could not be parsed into a valid decision."""
 
 
+def _extract_json_object(text):
+    """Return the first balanced {...} object in a string, or None.
+
+    Models sometimes wrap the JSON in prose or a ```json fence; this recovers it.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    return None
+
+
 def parse_decision(raw, breach):
     """Parse + normalize the model's structured output into a decision dict.
 
@@ -103,10 +123,18 @@ def parse_decision(raw, breach):
     output that is not usable at all.
     """
     if isinstance(raw, (str, bytes, bytearray)):
+        text = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else raw
         try:
-            data = json.loads(raw)
-        except (ValueError, TypeError) as exc:
-            raise InvalidDecision(f"analyzer output is not JSON: {exc}")
+            data = json.loads(text)
+        except (ValueError, TypeError):
+            # The model may wrap the JSON in prose or a ```json fence — recover it.
+            snippet = _extract_json_object(text)
+            if snippet is None:
+                raise InvalidDecision("analyzer output is not JSON")
+            try:
+                data = json.loads(snippet)
+            except (ValueError, TypeError) as exc:
+                raise InvalidDecision(f"analyzer output is not JSON: {exc}")
     else:
         data = raw
     if not isinstance(data, dict):
