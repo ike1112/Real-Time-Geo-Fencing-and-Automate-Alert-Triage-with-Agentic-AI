@@ -119,6 +119,17 @@ export class AlertingStack extends cdk.Stack {
       ],
     });
 
+    // An AgentCore runtime's execution role must write its own logs and (with OTEL
+    // tracing on) export X-Ray segments. ECR pull is granted per-image below.
+    const runtimeObservability = () => new iam.PolicyStatement({
+      actions: [
+        'logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams',
+        'xray:PutTraceSegments', 'xray:PutTelemetryRecords', 'xray:GetSamplingRules', 'xray:GetSamplingTargets',
+        'cloudwatch:PutMetricData',
+      ],
+      resources: ['*'],
+    });
+
     // --- Alert Analyzer runtime (memory + gate + SQS forward). ---
     const analyzerImage = new DockerImageAsset(this, 'AnalyzerImage', {
       directory: path.join(__dirname, '..', 'agents'),
@@ -139,6 +150,8 @@ export class AlertingStack extends cdk.Stack {
       resources: [memory.attrMemoryArn, `${memory.attrMemoryArn}/*`],
     }));
     alertQueue.grantSendMessages(analyzerRole);
+    analyzerImage.repository.grantPull(analyzerRole);   // AgentCore validates image pull at create
+    analyzerRole.addToPolicy(runtimeObservability());
 
     const analyzerRuntime = new CfnRuntime(this, 'AnalyzerRuntime', {
       agentRuntimeName: 'geofence_alert_analyzer',
@@ -168,6 +181,8 @@ export class AlertingStack extends cdk.Stack {
     publisherRole.addToPolicy(invokeModel());
     alertsTopic.grantPublish(publisherRole);
     idempotencyTable.grantWriteData(publisherRole);
+    publisherImage.repository.grantPull(publisherRole);   // AgentCore validates image pull at create
+    publisherRole.addToPolicy(runtimeObservability());
 
     const publisherRuntime = new CfnRuntime(this, 'PublisherRuntime', {
       agentRuntimeName: 'geofence_alert_publisher',
