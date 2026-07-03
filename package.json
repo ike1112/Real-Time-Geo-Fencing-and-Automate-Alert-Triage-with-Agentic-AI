@@ -7,6 +7,8 @@
     "synth": "cdk synth",
     "test": "jest --passWithNoTests",
     "sim": "ts-node tools/simulator/index.ts",
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:check": "node scripts/deploy.mjs --check",
     "fetch:connector": "node tools/fetch-connector.mjs",
     "read-stream": "node tools/verify/read-stream.js",
     "inject:crossing": "node tools/verify/inject-crossing.js",

@@ -20,3 +20,6 @@ __pycache__/
 docs/*.pdf
 docs/*.png
 processor/lib/*.jar
+
+# deploy logs
+logs/

@@ -13,6 +13,29 @@ All nine code bugs found during that deploy are fixed in this repo, so a redeplo
 
 ---
 
+## 0. Automated orchestrator (recommended)
+
+`scripts/deploy.mjs` runs the whole flow — prerequisite checks, install, step-by-step
+deploy, and per-stack verification — and writes a timestamped log to `logs/deploy-<ts>.log`.
+Nothing is created unless you pass `--deploy`.
+
+```bash
+npm run deploy:check                 # prerequisites only — no changes, no cost
+node scripts/deploy.mjs --install    # + npm ci, fetch the jar, cdk bootstrap
+node scripts/deploy.mjs --deploy --email you@example.com          # + deploy all four stacks
+node scripts/deploy.mjs --deploy --skip-alerting                  # 001/002/004 only (no Docker/Bedrock)
+```
+
+Useful flags: `--region <r>`, `--analyzer-model <id>`, `--publisher-model <id>`, `--yes`
+(skip the cost confirmation). The `--check` run reports each prerequisite as PASS / WARN /
+FAIL and exits non-zero on a hard failure, so it doubles as a readiness gate in CI.
+
+> It still cannot verify **Bedrock model access** (an account console grant — §2); it warns
+> so you don't discover it only when the analyzer 500s. The manual steps below (§3–§4) are
+> what the orchestrator runs, for when you want to drive it by hand.
+
+---
+
 ## 1. Prerequisites
 
 | Need | For | Notes |
