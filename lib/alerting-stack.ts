@@ -167,6 +167,10 @@ export class AlertingStack extends cdk.Stack {
         OTEL_TRACES_SAMPLER: 'always_on',
       },
     });
+    // AgentCore validates the role can pull the image at create time, so the runtime
+    // must be created only AFTER the role's ECR-pull policy is attached (the roleArn
+    // reference alone does not order against the role's inline policy).
+    analyzerRuntime.node.addDependency(analyzerRole);
 
     // --- Alert Publisher runtime (compose + idempotent SNS publish, no memory). ---
     const publisherImage = new DockerImageAsset(this, 'PublisherImage', {
@@ -198,6 +202,7 @@ export class AlertingStack extends cdk.Stack {
         OTEL_TRACES_SAMPLER: 'always_on',
       },
     });
+    publisherRuntime.node.addDependency(publisherRole);   // create after ECR-pull policy attaches
 
     // --- Analyzer bridge: geofence-alerts (Kinesis) -> InvokeAgentRuntime. ---
     const analyzerBridge = new lambda.Function(this, 'AnalyzerBridge', {
