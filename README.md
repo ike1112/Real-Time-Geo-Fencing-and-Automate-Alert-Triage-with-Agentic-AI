@@ -229,6 +229,7 @@ aws kinesis delete-stream --stream-name vehicle-telemetry --enforce-consumer-del
 - **Specs, designs, task ledgers:** `specs/00N-*/{spec,design,tasks}.md`
 - **Project state + deferred follow-ups:** `STATE.md`
 - **Engineering-loop process** (how work is gated): `LOOP.md`, `docs/safety.md`
+- **Stacks & AWS services (what each stack does):** [`docs/stacks.md`](docs/stacks.md)
 - **Apache Flink wiring (topology, state, diagrams):** [`docs/flink-architecture.md`](docs/flink-architecture.md)
 - **Architecture reviews:** `docs/well-architected-review.md`, `docs/streaming-architecture-review.md`
 
