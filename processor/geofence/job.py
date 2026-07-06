@@ -30,7 +30,9 @@ only maps that logic onto Flink state:
 """
 
 import json
+import logging
 import os
+import sys
 import time
 
 from pyflink.common import Types
@@ -39,6 +41,30 @@ from pyflink.datastream.state import MapStateDescriptor, ListStateDescriptor
 
 from detector import evaluate_position, parse_telemetry, PoisonRecord
 import latency
+
+
+def _configure_logging():
+    """Route the job's Python logs to CloudWatch.
+
+    PyFlink forwards Python ``logging`` records to the TaskManager log, which MSF
+    ships to the configured CloudWatch log group — but only at the level Python is
+    set to. Python defaults to WARNING, so without this ``logger.info(...)`` is
+    dropped and nothing but the JVM's "Python process exits with code 1" wrapper
+    reaches CloudWatch. Runs on both the JobManager (main) and each TaskManager
+    worker (module import on deserialize). A stdout handler is added as a
+    belt-and-suspenders path since MSF also captures the worker's stdout.
+    """
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    if not any(getattr(h, "_geofence", False) for h in root.handlers):
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s - %(message)s"))
+        handler._geofence = True
+        root.addHandler(handler)
+
+
+_configure_logging()
+logger = logging.getLogger("geofence.job")
 
 # Stream names; overridable via MSF runtime properties when the CDK Flink app is wired.
 TELEMETRY_STREAM = "vehicle-telemetry"
@@ -69,18 +95,25 @@ class GeofenceBroadcastFunction(KeyedBroadcastProcessFunction):
         # boundary; callback gauges are not supported, so the Layer-2 latency numbers
         # are emitted by the offline probe / EMF path rather than a Flink gauge here).
         self._dropped = runtime_context.get_metrics_group().counter("poisonTelemetryDropped")
+        logger.info("geofence operator open: keyed + broadcast state initialized")
 
     def process_broadcast_element(self, value, ctx):
-        change = json.loads(value)
-        zones = ctx.get_broadcast_state(ZONES_DESCRIPTOR)
-        zone_id = change["id"]
-        if change.get("op") == "REMOVE" or not change.get("active", False):
-            if zones.contains(zone_id):
-                zones.remove(zone_id)
-        else:
-            zones.put(zone_id, value)
-        # A rule change updates state and emits nothing. Telemetry held during the
-        # bootstrap window is drained lazily by the owning key on its next element.
+        try:
+            change = json.loads(value)
+            zones = ctx.get_broadcast_state(ZONES_DESCRIPTOR)
+            zone_id = change["id"]
+            if change.get("op") == "REMOVE" or not change.get("active", False):
+                if zones.contains(zone_id):
+                    zones.remove(zone_id)
+                    logger.info("rule removed: zone %s", zone_id)
+            else:
+                zones.put(zone_id, value)
+                logger.info("rule applied: zone %s kind=%s", zone_id, change.get("kind"))
+            # A rule change updates state and emits nothing. Telemetry held during the
+            # bootstrap window is drained lazily by the owning key on its next element.
+        except Exception:
+            logger.exception("process_broadcast_element failed for value=%.300s", value)
+            raise
 
     def _evaluate(self, telemetry, zones):
         flink_read = int(time.time() * 1000)
@@ -100,34 +133,45 @@ class GeofenceBroadcastFunction(KeyedBroadcastProcessFunction):
     def process_element(self, value, ctx):
         try:
             telemetry = parse_telemetry(value)
-        except PoisonRecord:
+        except PoisonRecord as exc:
             self._dropped.inc()  # drop and count; the shard keeps moving
+            logger.warning("dropped poison telemetry: %s", exc)
             return
 
-        zones_state = ctx.get_broadcast_state(ZONES_DESCRIPTOR)
-        zones = {zid: json.loads(zone) for zid, zone in zones_state.items()}
+        try:
+            zones_state = ctx.get_broadcast_state(ZONES_DESCRIPTOR)
+            zones = {zid: json.loads(zone) for zid, zone in zones_state.items()}
 
-        if not zones:
-            # Bootstrap gate: no zone loaded yet, so hold this position rather than
-            # let it set a baseline that would miss the first real crossing.
-            self._pending.add(value)
-            return
+            if not zones:
+                # Bootstrap gate: no zone loaded yet, so hold this position rather than
+                # let it set a baseline that would miss the first real crossing.
+                self._pending.add(value)
+                return
 
-        # Zones are loaded: drain anything held during bootstrap (in arrival order),
-        # then evaluate the current position.
-        pending = list(self._pending.get())
-        if pending:
-            self._pending.clear()
-            for raw in pending:
-                try:
-                    held = parse_telemetry(raw)
-                except PoisonRecord:
-                    self._dropped.inc()
-                    continue
-                for breach in self._evaluate(held, zones):
-                    yield json.dumps(breach)
-        for breach in self._evaluate(telemetry, zones):
-            yield json.dumps(breach)
+            # Zones are loaded: drain anything held during bootstrap (in arrival order),
+            # then evaluate the current position.
+            pending = list(self._pending.get())
+            if pending:
+                self._pending.clear()
+                logger.info("bootstrap drain: replaying %d held record(s)", len(pending))
+                for raw in pending:
+                    try:
+                        held = parse_telemetry(raw)
+                    except PoisonRecord as exc:
+                        self._dropped.inc()
+                        logger.warning("dropped poison telemetry during drain: %s", exc)
+                        continue
+                    for breach in self._evaluate(held, zones):
+                        yield json.dumps(breach)
+
+            breaches = self._evaluate(telemetry, zones)
+            if breaches:
+                logger.info("emitted %d breach(es) for vehicle %s", len(breaches), telemetry.get("vehicleId"))
+            for breach in breaches:
+                yield json.dumps(breach)
+        except Exception:
+            logger.exception("process_element failed")
+            raise
 
 
 def build_pipeline(telemetry_stream, rules_stream):
@@ -184,6 +228,8 @@ def main():
     telemetry_name = streams.get("telemetryStream", TELEMETRY_STREAM)
     rules_name = streams.get("rulesStream", RULES_STREAM)
     alerts_name = streams.get("alertsStream", ALERTS_STREAM)
+    logger.info("starting geofence-breach-detection: region=%s telemetry=%s rules=%s alerts=%s",
+                region, telemetry_name, rules_name, alerts_name)
 
     telemetry = env.add_source(
         FlinkKinesisConsumer(
@@ -211,6 +257,7 @@ def main():
     )
 
     build_pipeline(telemetry, rules).sink_to(sink)
+    logger.info("job graph built; submitting to the cluster")
     env.execute("geofence-breach-detection")
 
 
