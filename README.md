@@ -6,6 +6,10 @@ detects geofence breaches against live-editable zones; an AI triage layer suppre
 false alarms, keeps genuine incidents, and delivers context-rich alerts; and a
 two-layer observability stack measures the health and latency of every hop.
 
+> **New here? Start with [`docs/what-this-does.md`](docs/what-this-does.md)** — a
+> plain-language overview with two concrete stories (a real theft that alerts, a GPS
+> glitch that stays quiet). It explains the *point* before the architecture.
+
 ```
  vehicles ──MQTT──▶ IoT rule ──▶ vehicle-telemetry (Kinesis) ─┐
                                                               ▼
@@ -229,6 +233,7 @@ aws kinesis delete-stream --stream-name vehicle-telemetry --enforce-consumer-del
 - **Specs, designs, task ledgers:** `specs/00N-*/{spec,design,tasks}.md`
 - **Project state + deferred follow-ups:** `STATE.md`
 - **Engineering-loop process** (how work is gated): `LOOP.md`, `docs/safety.md`
+- **Plain-language overview (start here):** [`docs/what-this-does.md`](docs/what-this-does.md)
 - **Stacks & AWS services (what each stack does):** [`docs/stacks.md`](docs/stacks.md)
 - **Apache Flink wiring (topology, state, diagrams):** [`docs/flink-architecture.md`](docs/flink-architecture.md)
 - **Architecture reviews:** `docs/well-architected-review.md`, `docs/streaming-architecture-review.md`
